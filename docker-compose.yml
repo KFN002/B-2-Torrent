@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: torrent-db
+    environment:
+      POSTGRES_USER: torrentuser
+      POSTGRES_PASSWORD: torrentpass
+      POSTGRES_DB: torrentdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - torrent-network
+    restart: unless-stopped
+
+  # Tor Proxy for anonymous connections
+  tor:
+    image: dperson/torproxy:latest
+    container_name: torrent-tor
+    ports:
+      - "9050:9050"
+      - "9051:9051"
+    networks:
+      - torrent-network
+    restart: unless-stopped
+    environment:
+      - TOR_LOG=notice
+    healthcheck:
+      test: ["CMD", "curl", "-f", "--socks5", "localhost:9050", "https://check.torproject.org"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Golang Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: torrent-backend
+    environment:
+      - DATABASE_URL=postgres://torrentuser:torrentpass@postgres:5432/torrentdb?sslmode=disable
+      - TOR_PROXY=socks5://tor:9050
+      - PORT=8080
+      - GIN_MODE=release
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./downloads:/app/downloads
+      - ./backend:/app/src
+    depends_on:
+      postgres:
+        condition: service_started
+      tor:
+        condition: service_started
+    networks:
+      - torrent-network
+    restart: unless-stopped
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: torrent-frontend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - torrent-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  torrent-network:
+    driver: bridge
