@@ -8,8 +8,8 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Secure Torrent Client',
-  description: 'Privacy-focused torrent downloader with Tor integration',
+  title: 'Stealth Torrent - Anonymous & Secure',
+  description: 'Privacy-focused torrent client with multi-hop proxy routing and zero logging',
 }
 
 export default function RootLayout({

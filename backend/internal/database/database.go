@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -26,13 +27,21 @@ type Torrent struct {
 }
 
 func New(dbURL string) (*Database, error) {
-	db, err := sql.Open("postgres", dbURL)
-	if err != nil {
-		return nil, err
+	if dbURL == "" {
+		return nil, fmt.Errorf("DATABASE_URL not provided")
 	}
 
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
 	if err := db.Ping(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	return &Database{db: db}, nil
@@ -44,7 +53,10 @@ func (d *Database) Close() error {
 
 func (d *Database) ClearActiveTorrents() error {
 	_, err := d.db.Exec("DELETE FROM active_torrents")
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to clear active torrents: %w", err)
+	}
+	return nil
 }
 
 func (d *Database) SaveTorrent(t *Torrent) error {
@@ -62,7 +74,10 @@ func (d *Database) SaveTorrent(t *Torrent) error {
 	`
 	_, err := d.db.Exec(query, t.InfoHash, t.Name, t.TotalSize, t.Downloaded,
 		t.Uploaded, t.DownloadRate, t.UploadRate, t.Progress, t.Status, t.MagnetURI)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to save torrent: %w", err)
+	}
+	return nil
 }
 
 func (d *Database) GetAllTorrents() ([]Torrent, error) {
@@ -72,7 +87,7 @@ func (d *Database) GetAllTorrents() ([]Torrent, error) {
 
 	rows, err := d.db.Query(query)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query torrents: %w", err)
 	}
 	defer rows.Close()
 
@@ -83,7 +98,7 @@ func (d *Database) GetAllTorrents() ([]Torrent, error) {
 			&t.Uploaded, &t.DownloadRate, &t.UploadRate, &t.Progress,
 			&t.Status, &t.MagnetURI, &t.CreatedAt)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan torrent row: %w", err)
 		}
 		torrents = append(torrents, t)
 	}
@@ -92,18 +107,27 @@ func (d *Database) GetAllTorrents() ([]Torrent, error) {
 
 func (d *Database) DeleteTorrent(infoHash string) error {
 	_, err := d.db.Exec("DELETE FROM active_torrents WHERE info_hash = $1", infoHash)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to delete torrent: %w", err)
+	}
+	return nil
 }
 
 func (d *Database) GetSetting(key string) (string, error) {
 	var value string
 	err := d.db.QueryRow("SELECT value FROM settings WHERE key = $1", key).Scan(&value)
-	return value, err
+	if err != nil {
+		return "", fmt.Errorf("failed to get setting %s: %w", key, err)
+	}
+	return value, nil
 }
 
 func (d *Database) SetSetting(key, value string) error {
 	query := `INSERT INTO settings (key, value) VALUES ($1, $2)
 			  ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = CURRENT_TIMESTAMP`
 	_, err := d.db.Exec(query, key, value)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to set setting %s: %w", key, err)
+	}
+	return nil
 }

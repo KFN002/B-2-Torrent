@@ -3,27 +3,29 @@
 @theme inline {
   --font-mono: 'Geist Mono', 'Geist Mono Fallback', monospace;
   
-  /* Black and white minimalist theme */
-  --color-background: #000000;
-  --color-foreground: #ffffff;
-  --color-card: #0a0a0a;
-  --color-card-foreground: #ffffff;
-  --color-popover: #0a0a0a;
-  --color-popover-foreground: #ffffff;
-  --color-primary: #ffffff;
+  /* Enhanced dark theme with better contrast for security-focused design */
+  --color-background: #0a0a0a;
+  --color-foreground: #e5e5e5;
+  --color-card: #141414;
+  --color-card-foreground: #e5e5e5;
+  --color-popover: #141414;
+  --color-popover-foreground: #e5e5e5;
+  --color-primary: #22c55e;
   --color-primary-foreground: #000000;
-  --color-secondary: #1a1a1a;
-  --color-secondary-foreground: #ffffff;
-  --color-muted: #1a1a1a;
+  --color-secondary: #1f1f1f;
+  --color-secondary-foreground: #e5e5e5;
+  --color-muted: #1f1f1f;
   --color-muted-foreground: #737373;
-  --color-accent: #262626;
-  --color-accent-foreground: #ffffff;
-  --color-destructive: #ffffff;
-  --color-destructive-foreground: #000000;
+  --color-accent: #2a2a2a;
+  --color-accent-foreground: #e5e5e5;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
   --color-border: #262626;
-  --color-input: #262626;
-  --color-ring: #ffffff;
-  --radius: 0.25rem;
+  --color-input: #1f1f1f;
+  --color-ring: #22c55e;
+  --color-success: #22c55e;
+  --color-warning: #eab308;
+  --radius: 0.5rem;
 }
 
 * {
@@ -35,12 +37,13 @@
 body {
   background: var(--color-background);
   color: var(--color-foreground);
+  font-family: var(--font-mono);
 }
 
-/* Custom scrollbar */
+/* Enhanced custom scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -49,8 +52,26 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: var(--color-muted-foreground);
+  border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-foreground);
+}
+
+/* Smooth animations for better UX */
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Focus styles for accessibility */
+*:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+/* Selection styling */
+::selection {
+  background-color: var(--color-primary);
+  color: var(--color-primary-foreground);
 }

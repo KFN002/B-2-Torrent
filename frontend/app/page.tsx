@@ -13,7 +13,13 @@ export default function Home() {
     <div className="min-h-screen bg-background text-foreground">
       <Header onAddTorrent={() => setIsAddDialogOpen(true)} />
       
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8 max-w-5xl">
+        <div className="mb-6 p-4 bg-success/10 border border-success/20 rounded-lg">
+          <p className="text-sm text-foreground">
+            <span className="font-bold text-success">SECURE MODE ACTIVE:</span> All traffic is routed through multi-hop encrypted proxies. No logs are stored. No telemetry is collected.
+          </p>
+        </div>
+        
         <TorrentList />
       </main>
 

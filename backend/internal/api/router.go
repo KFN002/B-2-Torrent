@@ -1,29 +1,38 @@
 package api
 
 import (
+	"log"
+	"net/http"
+
 	"github.com/KFN002/B-2-Torrent/backend/internal/database"
 	"github.com/KFN002/B-2-Torrent/backend/internal/middleware"
 	"github.com/KFN002/B-2-Torrent/backend/internal/torrent"
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
+	"github.com/gorilla/mux"
 )
 
-func SetupRouter(db *database.Database, tc *torrent.Client) *gin.Engine {
-	gin.SetMode(gin.ReleaseMode)
-	gin.DisableConsoleColor()
+// SetupRouter configures routes with Gorilla Mux for better security and middleware support
+func SetupRouter(db *database.Database, tc *torrent.Client) http.Handler {
+	r := mux.NewRouter()
 
-	router := gin.New()
+	// Security middleware
+	rateLimiter := middleware.NewRateLimiter()
+	r.Use(middleware.SecurityHeaders)
+	r.Use(middleware.AnonymityHeaders)
+	r.Use(middleware.CORS)
+	r.Use(rateLimiter.Middleware)
 
-	router.Use(gin.Recovery())
-	router.Use(middleware.SecurityHeaders())
-	router.Use(middleware.RemoveHeaders())
-	router.Use(middleware.NoLogging())
-
-	// CORS configuration
-	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{"*"}
-	config.AllowMethods = []string{"GET", "POST", "DELETE", "PUT"}
-	router.Use(cors.New(config))
+	// Recovery middleware for fault tolerance
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				if err := recover(); err != nil {
+					log.Printf("PANIC RECOVERED: %v", err)
+					http.Error(w, "Internal server error", http.StatusInternalServerError)
+				}
+			}()
+			next.ServeHTTP(w, r)
+		})
+	})
 
 	// Create handlers
 	h := &Handlers{
@@ -31,26 +40,26 @@ func SetupRouter(db *database.Database, tc *torrent.Client) *gin.Engine {
 		torrentClient: tc,
 	}
 
-	// API routes
-	api := router.Group("/api")
-	{
-		// Torrent routes
-		api.POST("/torrents", h.AddTorrent)
-		api.GET("/torrents", h.GetTorrents)
-		api.GET("/torrents/:infoHash", h.GetTorrent)
-		api.DELETE("/torrents/:infoHash", h.DeleteTorrent)
-		api.POST("/torrents/:infoHash/pause", h.PauseTorrent)
-		api.POST("/torrents/:infoHash/resume", h.ResumeTorrent)
+	// API routes with Gorilla Mux
+	api := r.PathPrefix("/api").Subrouter()
 
-		// Settings routes
-		api.GET("/settings", h.GetSettings)
-		api.PUT("/settings", h.UpdateSettings)
+	// Torrent routes
+	api.HandleFunc("/torrents", h.AddTorrent).Methods("POST", "OPTIONS")
+	api.HandleFunc("/torrents", h.GetTorrents).Methods("GET")
+	api.HandleFunc("/torrents/{infoHash}", h.GetTorrent).Methods("GET")
+	api.HandleFunc("/torrents/{infoHash}", h.DeleteTorrent).Methods("DELETE", "OPTIONS")
+	api.HandleFunc("/torrents/{infoHash}/pause", h.PauseTorrent).Methods("POST", "OPTIONS")
+	api.HandleFunc("/torrents/{infoHash}/resume", h.ResumeTorrent).Methods("POST", "OPTIONS")
 
-		// Health check
-		api.GET("/health", h.HealthCheck)
+	// Settings routes
+	api.HandleFunc("/settings", h.GetSettings).Methods("GET")
+	api.HandleFunc("/settings", h.UpdateSettings).Methods("PUT", "OPTIONS")
 
-		api.POST("/cleanup", h.CleanupData)
-	}
+	// Health check
+	api.HandleFunc("/health", h.HealthCheck).Methods("GET")
 
-	return router
+	// Cleanup endpoint
+	api.HandleFunc("/cleanup", h.CleanupData).Methods("POST", "OPTIONS")
+
+	return r
 }
