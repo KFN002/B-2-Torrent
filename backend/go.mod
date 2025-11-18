@@ -1,4 +1,4 @@
-module github.com/KFN002/B-2-Torrent
+module github.com/KFN002/B-2-Torrent/backend
 
 go 1.25.1
 

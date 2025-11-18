@@ -12,7 +12,7 @@ func NoLogging() gin.HandlerFunc {
 }
 
 // SecurityHeaders adds security headers to all responses
-func SecurityHeaders() gin.HandlerFunc {
+func GinSecurityHeaders() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Prevent browser from caching any data
 		c.Header("Cache-Control", "no-store, no-cache, must-revalidate, private")

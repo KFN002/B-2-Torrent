@@ -5,8 +5,6 @@ import (
 	"encoding/base64"
 	"net/http"
 	"time"
-
-	"github.com/gorilla/mux"
 )
 
 // SecurityHeaders adds comprehensive security headers
