@@ -16,6 +16,8 @@ const securityStatus = document.getElementById("security-status")
 const blockStatsDisplay = document.getElementById("block-stats")
 const settingsBtn = document.getElementById("settings-btn")
 const aboutBtn = document.getElementById("about-btn")
+const saveBrowserSettingsBtn = document.getElementById("save-browser-settings-btn")
+const cancelBrowserSettingsBtn = document.getElementById("cancel-browser-settings-btn")
 const b2SearchCard = document.getElementById("b2-search-card")
 const closeSearchBtn = document.getElementById("close-search")
 const searchSettingsBtn = document.getElementById("search-settings-btn")
@@ -26,6 +28,24 @@ const cancelSearchSettingsBtn = document.getElementById("cancel-search-settings-
 const tabBar = document.getElementById("tab-bar")
 const tabsContainer = document.getElementById("tabs-container")
 const newTabBtn = document.getElementById("new-tab-btn")
+
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
+function safeHttpUrl(value) {
+  try {
+    const parsed = new URL(String(value ?? ""))
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.href : ""
+  } catch {
+    return ""
+  }
+}
 
 // Proxy modal elements
 const proxyEnabled = document.getElementById("proxy-enabled")
@@ -174,11 +194,12 @@ async function handleB2Search(query) {
         <div class="blocked-message">
           <div class="blocked-icon">🚫</div>
           <h3>Search Blocked</h3>
-          <p>${searchData.reason}</p>
-          <p class="blocked-query">Query: "${searchData.query}"</p>
-          <button onclick="showSearchSettings()" class="primary-btn">Open Search Settings</button>
+          <p>${escapeHTML(searchData.reason)}</p>
+          <p class="blocked-query">Query: "${escapeHTML(searchData.query)}"</p>
+          <button id="open-search-settings-from-results" class="primary-btn">Open Search Settings</button>
         </div>
       `
+      document.getElementById("open-search-settings-from-results")?.addEventListener("click", showSearchSettings)
       return
     }
 
@@ -195,25 +216,28 @@ async function handleB2Search(query) {
 
     let html = `
       <div class="search-info">
-        <p>Found ${searchData.count} results for "<strong>${searchData.query}</strong>"</p>
+        <p>Found ${Number(searchData.count) || 0} results for "<strong>${escapeHTML(searchData.query)}</strong>"</p>
         <p class="search-engine">Powered by B2 Search (Beta) - Aggregated from multiple privacy-focused sources</p>
-        ${searchData.warning ? `<div class="content-warning">⚠️ ${searchData.warning}</div>` : ""}
+        ${searchData.warning ? `<div class="content-warning">⚠️ ${escapeHTML(searchData.warning)}</div>` : ""}
       </div>
     `
 
     if (searchData.results && searchData.results.length > 0) {
       html += '<div class="results-list">'
       searchData.results.forEach((result) => {
+        const resultUrl = safeHttpUrl(result.url)
+        if (!resultUrl) return
+
         html += `
           <div class="result-item">
             <h3 class="result-title">
-              <a href="${result.url}" onclick="event.preventDefault(); navigate('${result.url}'); return false;">
-                ${result.title}
+              <a href="${escapeHTML(resultUrl)}" data-result-url="${escapeHTML(resultUrl)}">
+                ${escapeHTML(result.title)}
               </a>
             </h3>
-            <p class="result-url">${result.url}</p>
-            <p class="result-snippet">${result.snippet || "No description available"}</p>
-            <span class="result-source">Source: ${result.source}</span>
+            <p class="result-url">${escapeHTML(resultUrl)}</p>
+            <p class="result-snippet">${escapeHTML(result.snippet || "No description available")}</p>
+            <span class="result-source">Source: ${escapeHTML(result.source)}</span>
           </div>
         `
       })
@@ -223,6 +247,12 @@ async function handleB2Search(query) {
     }
 
     resultsContent.innerHTML = html
+    resultsContent.querySelectorAll("[data-result-url]").forEach((link) => {
+      link.addEventListener("click", (event) => {
+        event.preventDefault()
+        navigate(link.getAttribute("data-result-url"))
+      })
+    })
   } catch (error) {
     console.error("[B2 Search] Error:", error)
     resultsContent.innerHTML = `
@@ -357,27 +387,37 @@ async function saveBrowserSettings() {
   alert("Settings saved! Reload for changes to take effect.")
 }
 
+if (saveBrowserSettingsBtn) {
+  saveBrowserSettingsBtn.addEventListener("click", saveBrowserSettings)
+}
+
+if (cancelBrowserSettingsBtn) {
+  cancelBrowserSettingsBtn.addEventListener("click", () => {
+    document.getElementById("browserSettingsModal").style.display = "none"
+  })
+}
+
 async function showBrowserAbout() {
   const info = await window.electronAPI.getBrowserInfo()
 
   const aboutHTML = `
     <div class="about-content">
-      <h1>${info.name}</h1>
-      <p class="version">Version ${info.version}</p>
-      <p class="description">${info.description}</p>
+      <h1>${escapeHTML(info.name)}</h1>
+      <p class="version">Version ${escapeHTML(info.version)}</p>
+      <p class="description">${escapeHTML(info.description)}</p>
       
       <h3>Security Features</h3>
       <ul class="feature-list">
-        ${info.features.map((f) => `<li>✓ ${f}</li>`).join("")}
+        ${info.features.map((f) => `<li>✓ ${escapeHTML(f)}</li>`).join("")}
       </ul>
       
-      <p class="author">Developed by ${info.author}</p>
-      <p class="license">License: ${info.license}</p>
+      <p class="author">Developed by ${escapeHTML(info.author)}</p>
+      <p class="license">License: ${escapeHTML(info.license)}</p>
       
       <div class="security-notice">
-        <strong>🔒 Privacy Guarantee:</strong> This browser leaves absolutely no traces. 
-        No history, no cache, no cookies, no logs. All data is automatically cleared on exit. 
-        Advanced anti-fingerprinting protections ensure complete anonymity.
+        <strong>🔒 Privacy Notice:</strong> This browser uses ephemeral sessions, clears local data, 
+        and reduces common browser fingerprinting and leak surfaces. Use trusted proxies or Tor routes 
+        when you need network-layer anonymity.
       </div>
     </div>
   `

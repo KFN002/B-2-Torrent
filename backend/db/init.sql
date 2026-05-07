@@ -22,8 +22,12 @@ CREATE TABLE IF NOT EXISTS active_torrents (
     progress FLOAT DEFAULT 0,
     status VARCHAR(50) DEFAULT 'downloading',
     magnet_uri TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE active_torrents
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 
 -- Create indexes
 CREATE INDEX IF NOT EXISTS idx_active_torrents_status ON active_torrents(status);
@@ -34,7 +38,14 @@ INSERT INTO settings (key, value) VALUES
     ('max_upload_rate', '0'),
     ('max_connections', '200'),
     ('enable_tor', 'true'),
-    ('download_path', '/app/downloads')
+    ('download_path', '/data/downloads'),
+    ('kill_switch_enabled', 'true'),
+    ('dns_protection_enabled', 'true'),
+    ('force_encryption', 'true'),
+    ('reject_plaintext', 'true'),
+    ('no_logs_mode', 'true'),
+    ('obfuscate_traffic', 'true'),
+    ('vpn_type', 'none')
 ON CONFLICT (key) DO NOTHING;
 
 -- Add function to automatically clear old data periodically

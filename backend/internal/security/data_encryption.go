@@ -83,8 +83,8 @@ func (de *DataEncryption) Decrypt(ciphertext string) (string, error) {
 		return "", fmt.Errorf("ciphertext too short")
 	}
 
-	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	nonce, encryptedPayload := data[:nonceSize], data[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, encryptedPayload, nil)
 	if err != nil {
 		de.logger.Error("Failed to decrypt", zap.Error(err))
 		return "", err

@@ -4,6 +4,9 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"net/http"
+	"os"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -32,8 +35,6 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		w.Header().Del("X-AspNet-Version")
 		w.Header().Del("X-AspNetMvc-Version")
 
-		w.Header().Set("Timing-Allow-Origin", "*")
-
 		next.ServeHTTP(w, r)
 	})
 }
@@ -53,6 +54,7 @@ func AnonymityHeaders(next http.Handler) http.Handler {
 
 // RateLimiter implements token bucket rate limiting for fault tolerance
 type RateLimiter struct {
+	mu       sync.Mutex
 	requests map[string]*bucket
 }
 
@@ -72,6 +74,7 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 		// Rate limit by endpoint, not IP for privacy
 		key := r.URL.Path
 
+		rl.mu.Lock()
 		// Simple rate limiting - 100 requests per minute per endpoint
 		if rl.requests[key] == nil {
 			rl.requests[key] = &bucket{tokens: 100, lastRefill: time.Now()}
@@ -87,8 +90,10 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 
 		if b.tokens > 0 {
 			b.tokens--
+			rl.mu.Unlock()
 			next.ServeHTTP(w, r)
 		} else {
+			rl.mu.Unlock()
 			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 		}
 	})
@@ -104,10 +109,14 @@ func GenerateNonce() string {
 // CORS middleware with security in mind
 func CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Only allow specific origins in production
 		origin := r.Header.Get("Origin")
 		if origin != "" {
+			if !originAllowed(origin) {
+				http.Error(w, "CORS origin denied", http.StatusForbidden)
+				return
+			}
 			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Add("Vary", "Origin")
 		}
 
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, PUT, OPTIONS")
@@ -121,4 +130,29 @@ func CORS(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func LimitRequestBody(maxBytes int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Body != nil {
+				r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func originAllowed(origin string) bool {
+	allowed := os.Getenv("CORS_ALLOWED_ORIGINS")
+	if strings.TrimSpace(allowed) == "" {
+		allowed = "http://localhost,http://localhost:3000,http://127.0.0.1,http://127.0.0.1:3000"
+	}
+
+	for _, candidate := range strings.Split(allowed, ",") {
+		if strings.TrimSpace(candidate) == origin {
+			return true
+		}
+	}
+	return false
 }

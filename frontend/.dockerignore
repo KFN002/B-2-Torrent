@@ -1,0 +1,7 @@
+node_modules
+.next
+out
+.env*
+_legacy_frontend
+npm-debug.log*
+pnpm-debug.log*

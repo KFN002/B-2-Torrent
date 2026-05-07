@@ -1,38 +1,44 @@
-FROM golang:1.23-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
-WORKDIR /app
+WORKDIR /src
 
-RUN apk add --no-cache git ca-certificates tzdata upx
+RUN apk add --no-cache ca-certificates tzdata
 
 COPY go.mod go.sum ./
-
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go mod download
 
 COPY . .
-
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags="-s -w -extldflags '-static' -X main.Version=$(git describe --tags --always)" \
+    CGO_ENABLED=0 GOOS=linux go build \
     -trimpath \
-    -tags netgo \
-    -installsuffix netgo \
-    -o torrent-server ./cmd/server && \
-    upx --best --lzma torrent-server
+    -ldflags="-s -w" \
+    -o /out/b2torrent ./cmd/server
 
-FROM scratch
+FROM alpine:3.22
 
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
-COPY --from=builder /app/torrent-server /torrent-server
+RUN apk add --no-cache ca-certificates tzdata wget tini && \
+    addgroup -S b2torrent && \
+    adduser -S -G b2torrent -h /app b2torrent && \
+    mkdir -p /data/downloads /tmp/b2torrent-temp /tmp/b2torrent-uploads && \
+    chown -R b2torrent:b2torrent /data /tmp/b2torrent-temp /tmp/b2torrent-uploads /app
 
-USER 65534:65534
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=8080
+ENV DOWNLOAD_DIR=/data/downloads
+
+COPY --from=builder /out/b2torrent /usr/local/bin/b2torrent
+
+USER b2torrent
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD ["/torrent-server", "health"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:8080/api/health >/dev/null || exit 1
 
-ENTRYPOINT ["/torrent-server"]
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["b2torrent"]

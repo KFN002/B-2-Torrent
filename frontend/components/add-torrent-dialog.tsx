@@ -1,111 +1,123 @@
-'use client'
+"use client"
 
-import { useState } from 'react'
-import { X, LinkIcon, AlertCircle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import type React from "react"
+
+import { useState } from "react"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Link, File, FolderOpen } from "lucide-react"
 
 interface AddTorrentDialogProps {
   open: boolean
-  onClose: () => void
+  onOpenChange: (open: boolean) => void
+  onAdd: () => void
 }
 
-export function AddTorrentDialog({ open, onClose }: AddTorrentDialogProps) {
-  const [magnetUri, setMagnetUri] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+export function AddTorrentDialog({ open, onOpenChange, onAdd }: AddTorrentDialogProps) {
+  const [magnetLink, setMagnetLink] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [downloadPath, setDownloadPath] = useState("/downloads")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
-    setError('')
+    setIsLoading(true)
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/torrents`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ magnetUri }),
+      const response = await fetch("/api/torrents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ magnetLink, downloadPath }),
       })
 
-      if (!response.ok) {
-        throw new Error('Failed to add torrent')
+      if (response.ok) {
+        onAdd()
+        setMagnetLink("")
+        setDownloadPath("/downloads")
+        onOpenChange(false)
       }
-
-      setMagnetUri('')
-      onClose()
-    } catch (err) {
-      setError('Failed to add torrent. Please verify the magnet link.')
+    } catch (error) {
+      console.error("Failed to add torrent:", error)
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 bg-background/95 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-      <div className="bg-card border border-border rounded-lg p-6 w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-success/20">
-              <LinkIcon className="h-5 w-5 text-success" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold">Add Torrent</h2>
-              <p className="text-xs text-muted-foreground">Paste your magnet link below</p>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle className="text-2xl">Add Torrent</DialogTitle>
+          <DialogDescription className="text-base">
+            Add a torrent using a magnet link or .torrent file
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-6 pt-4">
+          <div className="space-y-2">
+            <Label htmlFor="magnet" className="text-sm font-medium">
+              Magnet Link
+            </Label>
+            <div className="relative">
+              <Link className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="magnet"
+                placeholder="magnet:?xt=urn:btih:..."
+                value={magnetLink}
+                onChange={(e) => setMagnetLink(e.target.value)}
+                className="pl-10"
+                required
+              />
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} className="hover:bg-destructive/10">
-            <X className="h-4 w-4" />
+
+          <div className="space-y-2">
+            <Label htmlFor="downloadPath" className="text-sm font-medium">
+              Download Path
+            </Label>
+            <div className="relative">
+              <FolderOpen className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="downloadPath"
+                placeholder="/downloads"
+                value={downloadPath}
+                onChange={(e) => setDownloadPath(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">Files will be saved to this directory</p>
+          </div>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">Or</span>
+            </div>
+          </div>
+
+          <Button type="button" variant="outline" className="w-full gap-2 bg-transparent">
+            <File className="h-4 w-4" />
+            Upload .torrent file
           </Button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="magnet" className="text-sm font-medium text-foreground mb-2 block">
-              Magnet URI
-            </label>
-            <Input
-              id="magnet"
-              type="text"
-              placeholder="magnet:?xt=urn:btih:..."
-              value={magnetUri}
-              onChange={(e) => setMagnetUri(e.target.value)}
-              className="font-mono text-sm"
-              required
-              autoFocus
-            />
-            <p className="text-xs text-muted-foreground mt-2">
-              All downloads are routed through multi-hop encrypted proxies
-            </p>
-          </div>
-
-          {error && (
-            <div className="flex items-center gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded text-sm text-destructive">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
 
           <div className="flex gap-3 pt-2">
-            <Button 
-              type="submit" 
-              disabled={loading || !magnetUri.trim()} 
-              className="flex-1 bg-success text-black hover:bg-success/90 font-semibold"
-            >
-              {loading ? 'Adding Torrent...' : 'Add Torrent'}
-            </Button>
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={onClose}
-              className="hover:bg-destructive/10 hover:border-destructive"
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1 bg-transparent"
+              onClick={() => onOpenChange(false)}
             >
               Cancel
             </Button>
+            <Button type="submit" className="flex-1" disabled={!magnetLink || isLoading}>
+              {isLoading ? "Adding..." : "Add Torrent"}
+            </Button>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

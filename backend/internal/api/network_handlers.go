@@ -1,13 +1,11 @@
 package api
 
 import (
-	"encoding/json"
 	"math/rand"
 	"net/http"
 
 	"go.uber.org/zap"
 )
-
 
 func (h *Handlers) GetNetworkConnections(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("Fetching network connections")
@@ -78,7 +76,7 @@ func (h *Handlers) GetNetworkStats(w http.ResponseWriter, r *http.Request) {
 	if stats.AverageLatency < 0 {
 		stats.AverageLatency = 10
 	}
-	
+
 	if stats.AverageLatency < 50 {
 		stats.ConnectionQuality = "excellent"
 	} else if stats.AverageLatency < 100 {

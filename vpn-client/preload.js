@@ -11,4 +11,9 @@ contextBridge.exposeInMainWorld("api", {
   getSettings: () => ipcRenderer.invoke("get-settings"),
   saveSettings: (settings) => ipcRenderer.invoke("save-settings", settings),
   getAppInfo: () => ipcRenderer.invoke("get-app-info"),
+  onStatusUpdate: (callback) => {
+    const listener = (_event, status) => callback(status)
+    ipcRenderer.on("status-updated", listener)
+    return () => ipcRenderer.removeListener("status-updated", listener)
+  },
 })

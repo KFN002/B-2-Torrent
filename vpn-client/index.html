@@ -1,150 +1,316 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>B2 VPN Client - System-Wide Anonymous VPN</title>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none';">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>B2 VPN Client</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="app">
-        <header class="header">
-            <div class="logo">
-                <div class="shield-icon">🛡️</div>
-                <h1>B2 VPN Client</h1>
-            </div>
-            <div class="status-badge" id="statusBadge">Disconnected</div>
-        </header>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">B2 local route</p>
+        <h1>B2 VPN Client</h1>
+      </div>
+      <div class="topbar-actions">
+        <span class="status-pill" id="statusBadge">Disconnected</span>
+        <button class="button ghost" id="disconnectBtn" type="button">Disconnect</button>
+        <button class="button primary" id="connectBtn" type="button">Quick Connect</button>
+      </div>
+    </header>
 
-        <main class="content">
-            <!-- Connection Status -->
-            <section class="glass-card status-card">
-                <h2>Connection Status</h2>
-                <div class="status-grid">
-                    <div class="status-item">
-                        <span class="label">Status:</span>
-                        <span class="value" id="statusText">Disconnected</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="label">Public IP:</span>
-                        <span class="value" id="publicIP">N/A</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="label">Server:</span>
-                        <span class="value" id="serverInfo">N/A</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="label">Protocol:</span>
-                        <span class="value" id="protocolType">N/A</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="label">Speed ↓:</span>
-                        <span class="value" id="speedDown">0 KB/s</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="label">Speed ↑:</span>
-                        <span class="value" id="speedUp">0 KB/s</span>
-                    </div>
-                </div>
-                
-                <div class="connection-controls">
-                    <button class="btn btn-primary btn-large" id="connectBtn">
-                        <span class="btn-icon">🚀</span>
-                        Quick Connect
-                    </button>
-                    <button class="btn btn-danger btn-large" id="disconnectBtn" style="display: none;">
-                        <span class="btn-icon">⏹️</span>
-                        Disconnect
-                    </button>
-                </div>
-            </section>
-
-            <!-- Quick Connect Links -->
-            <section class="glass-card">
-                <h2>🔗 Quick Connect via Link</h2>
-                <div class="input-group">
-                    <input 
-                        type="text" 
-                        id="linkInput" 
-                        placeholder="vless://uuid@host:port?encryption=none&security=tls..."
-                        class="input-field"
-                    >
-                    <button class="btn btn-secondary" id="connectLinkBtn">Connect</button>
-                </div>
-                <div class="info-text">
-                    Supports: VLESS, VMess, Shadowsocks, Outline access keys
-                </div>
-            </section>
-
-            <!-- Server List -->
-            <section class="glass-card">
-                <div class="section-header">
-                    <h2>📡 Saved Servers</h2>
-                    <button class="btn btn-small btn-secondary" id="addServerBtn">+ Add Server</button>
-                </div>
-                <div id="serverList" class="server-list">
-                    <!-- Populated by JS -->
-                </div>
-            </section>
-
-            <!-- Proxy Settings -->
-            <section class="glass-card">
-                <h2>⚙️ System Proxy Settings</h2>
-                <div class="proxy-info">
-                    <div class="info-item">
-                        <strong>HTTP/HTTPS Proxy:</strong> 127.0.0.1:8888
-                    </div>
-                    <div class="info-item">
-                        <strong>SOCKS5 Proxy:</strong> 127.0.0.1:8889
-                    </div>
-                    <div class="info-text">
-                        These proxies are automatically configured system-wide when connected.
-                        Other devices on your network can use these addresses to route through your VPN.
-                    </div>
-                </div>
-            </section>
-        </main>
-    </div>
-
-    <!-- Add Server Modal -->
-    <div id="addServerModal" class="modal" style="display: none;">
-        <div class="modal-content glass-card">
-            <h2>Add Server</h2>
-            <form id="addServerForm">
-                <div class="form-group">
-                    <label>Name:</label>
-                    <input type="text" name="name" required class="input-field">
-                </div>
-                <div class="form-group">
-                    <label>Type:</label>
-                    <select name="type" class="input-field">
-                        <option value="vless">VLESS</option>
-                        <option value="vmess">VMess</option>
-                        <option value="shadowsocks">Shadowsocks</option>
-                        <option value="outline">Outline</option>
-                        <option value="tor">Tor</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Host:</label>
-                    <input type="text" name="host" required class="input-field">
-                </div>
-                <div class="form-group">
-                    <label>Port:</label>
-                    <input type="number" name="port" required class="input-field">
-                </div>
-                <div class="form-group">
-                    <label>UUID/Key:</label>
-                    <input type="text" name="uuid" class="input-field">
-                </div>
-                <div class="modal-actions">
-                    <button type="submit" class="btn btn-primary">Save</button>
-                    <button type="button" class="btn btn-secondary" id="cancelAddBtn">Cancel</button>
-                </div>
-            </form>
+    <main class="workspace">
+      <section class="panel connection-panel">
+        <div class="section-heading">
+          <h2>Connection</h2>
+          <span class="muted" id="connectionState">Idle</span>
         </div>
-    </div>
 
-    <script src="renderer.js"></script>
+        <div class="metric-grid">
+          <div class="metric">
+            <span>Mode</span>
+            <strong id="routeMode">Proxy</strong>
+          </div>
+          <div class="metric">
+            <span>Server</span>
+            <strong id="activeServer">None</strong>
+          </div>
+          <div class="metric">
+            <span>Protocol</span>
+            <strong id="activeProtocol">None</strong>
+          </div>
+          <div class="metric">
+            <span>Uptime</span>
+            <strong id="uptimeValue">0s</strong>
+          </div>
+          <div class="metric">
+            <span>Latency</span>
+            <strong id="latencyValue">N/A</strong>
+          </div>
+          <div class="metric">
+            <span>Helper</span>
+            <strong id="helperValue">None</strong>
+          </div>
+        </div>
+
+        <div class="throughput-grid">
+          <div>
+            <span>Down</span>
+            <strong id="downSpeed">0 B/s</strong>
+            <small id="downTotal">0 B total</small>
+          </div>
+          <div>
+            <span>Up</span>
+            <strong id="upSpeed">0 B/s</strong>
+            <small id="upTotal">0 B total</small>
+          </div>
+          <div>
+            <span>Open routes</span>
+            <strong id="activeConnections">0</strong>
+            <small id="killSwitchState">Kill switch clear</small>
+          </div>
+        </div>
+
+        <div class="quick-link">
+          <label for="linkInput">Quick connect link</label>
+          <div class="inline-control">
+            <input id="linkInput" class="input" type="text" spellcheck="false" placeholder="vless://, ss://, socks5://, http://">
+            <button class="button secondary" id="connectLinkBtn" type="button">Connect</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel specs-panel">
+        <div class="section-heading">
+          <h2>Live Specs</h2>
+          <span class="muted">Runtime</span>
+        </div>
+        <div class="spec-list">
+          <div><span>Platform</span><strong id="platformValue">N/A</strong></div>
+          <div><span>CPU</span><strong id="cpuValue">N/A</strong></div>
+          <div><span>Memory</span><strong id="memoryValue">N/A</strong></div>
+          <div><span>Electron</span><strong id="electronValue">N/A</strong></div>
+          <div><span>Node</span><strong id="nodeValue">N/A</strong></div>
+        </div>
+      </section>
+
+      <section class="panel servers-panel">
+        <div class="section-heading">
+          <h2>Servers</h2>
+          <span class="muted" id="serverCount">0 saved</span>
+        </div>
+
+        <form id="addServerForm" class="server-form">
+          <div class="form-row">
+            <label>
+              Name
+              <input class="input" name="name" type="text" required placeholder="Home relay">
+            </label>
+            <label>
+              Type
+              <select class="input" name="type">
+                <option value="socks5">SOCKS5</option>
+                <option value="tor">Tor SOCKS</option>
+                <option value="http">HTTP proxy</option>
+                <option value="https">HTTPS proxy</option>
+                <option value="vless">VLESS</option>
+                <option value="vmess">VMess</option>
+                <option value="shadowsocks">Shadowsocks</option>
+                <option value="outline">Outline</option>
+              </select>
+            </label>
+          </div>
+          <div class="form-row">
+            <label>
+              Host
+              <input class="input" name="host" type="text" required placeholder="127.0.0.1">
+            </label>
+            <label>
+              Port
+              <input class="input" name="port" type="number" min="1" max="65535" required placeholder="9050">
+            </label>
+          </div>
+          <div class="form-row">
+            <label>
+              Secret / UUID / key
+              <input class="input" name="uuid" type="password" autocomplete="off" placeholder="Only saved when enabled">
+            </label>
+            <label>
+              Method
+              <input class="input" name="method" type="text" placeholder="Shadowsocks method">
+            </label>
+          </div>
+          <div class="form-row">
+            <label>
+              SNI
+              <input class="input" name="sni" type="text" placeholder="Optional TLS server name">
+            </label>
+            <button class="button secondary align-end" type="submit">Save Server</button>
+          </div>
+        </form>
+
+        <div id="serverList" class="server-list"></div>
+      </section>
+
+      <section class="panel settings-panel">
+        <div class="section-heading">
+          <h2>Settings</h2>
+          <span class="muted" id="settingsState">Saved locally</span>
+        </div>
+
+        <form id="settingsForm" class="settings-grid">
+          <fieldset>
+            <legend>Routing</legend>
+            <label>
+              Connection mode
+              <select class="input" id="connectionMode">
+                <option value="proxy">System proxy</option>
+                <option value="tun">TUN mode</option>
+              </select>
+            </label>
+            <label>
+              Local HTTP port
+              <input class="input" id="localPort" type="number" min="1" max="65534">
+            </label>
+            <label>
+              Network service
+              <input class="input" id="networkService" type="text" placeholder="Wi-Fi">
+            </label>
+            <label class="check-row">
+              <input id="allowLan" type="checkbox">
+              Allow LAN access to local proxy
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Safety</legend>
+            <label>
+              Kill switch
+              <select class="input" id="killSwitchMode">
+                <option value="system-proxy">System proxy block</option>
+                <option value="app">App guard only</option>
+                <option value="off">Off</option>
+              </select>
+            </label>
+            <label>
+              IPv6
+              <select class="input" id="ipv6Mode">
+                <option value="privacy">Privacy identifiers</option>
+                <option value="off">Turn off when supported</option>
+                <option value="unchanged">Leave unchanged</option>
+              </select>
+            </label>
+            <label>
+              DNS servers
+              <textarea class="input" id="dnsServers" rows="2" spellcheck="false"></textarea>
+            </label>
+            <label class="check-row">
+              <input id="dnsProtection" type="checkbox">
+              Apply DNS protection when supported
+            </label>
+            <label class="check-row">
+              <input id="blockPrivateDestinations" type="checkbox">
+              Block private and loopback destinations
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Reliability</legend>
+            <label class="check-row">
+              <input id="autoReconnect" type="checkbox">
+              Auto reconnect
+            </label>
+            <label>
+              Max attempts
+              <input class="input" id="maxReconnectAttempts" type="number" min="0" max="10">
+            </label>
+            <label>
+              Health interval seconds
+              <input class="input" id="healthCheckInterval" type="number" min="3" max="120">
+            </label>
+            <label>
+              Connect timeout seconds
+              <input class="input" id="connectTimeout" type="number" min="2" max="60">
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Privacy</legend>
+            <label class="check-row">
+              <input id="saveSecrets" type="checkbox">
+              Save secrets in local config
+            </label>
+            <label class="check-row">
+              <input id="minimizeLogs" type="checkbox">
+              Minimize helper logs
+            </label>
+          </fieldset>
+
+          <fieldset class="wide">
+            <legend>TUN</legend>
+            <div class="form-row">
+              <label>
+                Helper
+                <select class="input" id="tunHelper">
+                  <option value="sing-box">sing-box</option>
+                  <option value="custom">Custom helper</option>
+                </select>
+              </label>
+              <label>
+                Helper path
+                <input class="input" id="tunHelperPath" type="text" spellcheck="false" placeholder="/usr/local/bin/sing-box">
+              </label>
+            </div>
+            <div class="form-row">
+              <label>
+                Interface
+                <input class="input" id="tunInterfaceName" type="text" placeholder="b2tun0">
+              </label>
+              <label>
+                Address
+                <input class="input" id="tunAddress" type="text" placeholder="172.19.0.2/30">
+              </label>
+              <label>
+                MTU
+                <input class="input" id="tunMtu" type="number" min="1280" max="65535">
+              </label>
+              <label>
+                Stack
+                <select class="input" id="tunStack">
+                  <option value="system">System</option>
+                  <option value="gvisor">gVisor</option>
+                  <option value="mixed">Mixed</option>
+                </select>
+              </label>
+            </div>
+            <div class="toggle-row">
+              <label class="check-row">
+                <input id="tunAutoRoute" type="checkbox">
+                Auto route
+              </label>
+              <label class="check-row">
+                <input id="tunStrictRoute" type="checkbox">
+                Strict route
+              </label>
+            </div>
+            <label>
+              Custom helper arguments, one per line
+              <textarea class="input mono" id="tunCustomArgs" rows="4" spellcheck="false" placeholder="--proxy&#10;socks5://{socksHost}:{socksPort}&#10;--tun&#10;{tunName}"></textarea>
+            </label>
+          </fieldset>
+
+          <button class="button primary wide-button" type="submit">Save Settings</button>
+        </form>
+      </section>
+
+      <section class="panel notice-panel">
+        <div id="notice" class="notice">Ready.</div>
+      </section>
+    </main>
+  </div>
+
+  <script src="renderer.js"></script>
 </body>
 </html>

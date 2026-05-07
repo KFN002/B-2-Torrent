@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/KFN002/B-2-Torrent/backend/internal/security"
 	"go.uber.org/zap"
@@ -29,8 +30,8 @@ type EncryptRequest struct {
 }
 
 type EncryptResponse struct {
-	Success      bool   `json:"success"`
-	Message      string `json:"message"`
+	Success       bool   `json:"success"`
+	Message       string `json:"message"`
 	EncryptedPath string `json:"encryptedPath,omitempty"`
 }
 
@@ -42,8 +43,14 @@ func (h *EncryptionHandlers) EncryptFile(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	filePath, err := normalizeUserFilePath(req.FilePath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	// Validate file exists
-	if _, err := os.Stat(req.FilePath); os.IsNotExist(err) {
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
 	}
@@ -54,14 +61,14 @@ func (h *EncryptionHandlers) EncryptFile(w http.ResponseWriter, r *http.Request)
 		KeyDerivation: req.KeyDerivation,
 		HashAlgorithm: req.HashAlgorithm,
 	}
-	
+
 	em := security.NewEncryptionManager(config, h.logger)
 
 	// Generate output path
-	outputPath := req.FilePath + ".b2encrypted"
+	outputPath := filePath + ".b2encrypted"
 
 	// Encrypt file
-	if err := em.EncryptFile(req.FilePath, outputPath, req.Password); err != nil {
+	if err := em.EncryptFile(filePath, outputPath, req.Password); err != nil {
 		h.logger.Error("Encryption failed", zap.Error(err))
 		http.Error(w, "Encryption failed", http.StatusInternalServerError)
 		return
@@ -69,16 +76,16 @@ func (h *EncryptionHandlers) EncryptFile(w http.ResponseWriter, r *http.Request)
 
 	// Optionally remove original file (secure delete)
 	uploadDir := os.Getenv("UPLOAD_DIR")
-	if uploadDir != "" && filepath.Dir(req.FilePath) == uploadDir {
-		os.Remove(req.FilePath) // Remove original after encryption
+	if uploadDir != "" && filepath.Dir(filePath) == uploadDir {
+		os.Remove(filePath) // Remove original after encryption
 	}
 
 	h.logger.Info("File encrypted successfully", zap.String("output", outputPath))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(EncryptResponse{
-		Success:      true,
-		Message:      "File encrypted successfully",
+		Success:       true,
+		Message:       "File encrypted successfully",
 		EncryptedPath: outputPath,
 	})
 }
@@ -91,8 +98,14 @@ func (h *EncryptionHandlers) DecryptFile(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	filePath, err := normalizeUserFilePath(req.FilePath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	// Validate encrypted file exists
-	if _, err := os.Stat(req.FilePath); os.IsNotExist(err) {
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		http.Error(w, "Encrypted file not found", http.StatusNotFound)
 		return
 	}
@@ -103,17 +116,14 @@ func (h *EncryptionHandlers) DecryptFile(w http.ResponseWriter, r *http.Request)
 		KeyDerivation: req.KeyDerivation,
 		HashAlgorithm: req.HashAlgorithm,
 	}
-	
+
 	em := security.NewEncryptionManager(config, h.logger)
 
 	// Generate output path (remove .b2encrypted extension)
-	outputPath := req.FilePath
-	if filepath.Ext(outputPath) == ".b2encrypted" {
-		outputPath = outputPath[:len(outputPath)-13]
-	}
+	outputPath := strings.TrimSuffix(filePath, ".b2encrypted")
 
 	// Decrypt file
-	if err := em.DecryptFile(req.FilePath, outputPath, req.Password); err != nil {
+	if err := em.DecryptFile(filePath, outputPath, req.Password); err != nil {
 		h.logger.Error("Decryption failed", zap.Error(err))
 		http.Error(w, "Decryption failed - incorrect password or corrupted file", http.StatusUnauthorized)
 		return
@@ -123,8 +133,8 @@ func (h *EncryptionHandlers) DecryptFile(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(EncryptResponse{
-		Success:      true,
-		Message:      "File decrypted successfully",
+		Success:       true,
+		Message:       "File decrypted successfully",
 		EncryptedPath: outputPath,
 	})
 }

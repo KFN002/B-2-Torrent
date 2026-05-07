@@ -3,7 +3,12 @@ REM Windows start script
 echo Starting B-2-Torrent...
 echo.
 
-docker-compose up -d
+if not exist .env (
+    echo Generating local secrets...
+    node scripts\gen-env.mjs
+)
+
+docker compose up -d --build
 
 if errorlevel 1 (
     echo Failed to start services!

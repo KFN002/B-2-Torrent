@@ -1,8 +1,6 @@
 const { app, BrowserWindow, ipcMain, session, Menu, BrowserView } = require("electron")
 const path = require("path")
-const Store = require("electron-store")
 const B2SearchEngine = require("./search-engine")
-const searchEngine = new B2SearchEngine()
 
 app.commandLine.appendSwitch("disable-http-cache")
 app.commandLine.appendSwitch("disable-gpu-shader-disk-cache")
@@ -22,7 +20,9 @@ app.commandLine.appendSwitch("disable-component-update")
 app.commandLine.appendSwitch("disable-domain-reliability")
 app.commandLine.appendSwitch("disable-sync")
 app.commandLine.appendSwitch("disable-web-resources")
-app.commandLine.appendSwitch("enable-quic")
+app.commandLine.appendSwitch("disable-quic")
+app.commandLine.appendSwitch("autoplay-policy", "user-gesture-required")
+app.commandLine.appendSwitch("force-webrtc-ip-handling-policy", "disable_non_proxied_udp")
 app.commandLine.appendSwitch("no-pings")
 app.commandLine.appendSwitch("no-referrers")
 
@@ -35,12 +35,6 @@ app.commandLine.appendSwitch("disable-webgl2")
 app.commandLine.appendSwitch("disable-canvas-aa")
 app.commandLine.appendSwitch("disable-2d-canvas-clip-aa")
 app.commandLine.appendSwitch("disable-gl-drawing-for-tests")
-
-const store = new Store({
-  name: "secure-browser-temp",
-  clearInvalidConfig: true,
-  encryptionKey: "b2-secure-random-key-" + Date.now(),
-})
 
 const blockLists = {
   ads: [
@@ -157,9 +151,23 @@ let blockStats = {
 
 let mainWindow
 let proxyConfig = null
+let store
+let searchEngine
 const tabs = new Map() // Store tab ID -> BrowserView mapping
 let activeTabId = null
 let tabCounter = 0
+
+async function initializeStorage() {
+  if (store && searchEngine) return
+
+  const { default: Store } = await import("electron-store")
+  store = new Store({
+    name: "secure-browser-temp",
+    clearInvalidConfig: true,
+    encryptionKey: "b2-secure-random-key-" + Date.now(),
+  })
+  searchEngine = new B2SearchEngine(store)
+}
 
 const securityHeaders = {
   "X-Frame-Options": "DENY",
@@ -174,6 +182,24 @@ const securityHeaders = {
   "X-DNS-Prefetch-Control": "off",
 }
 
+function isSafeWebUrl(value) {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === "https:" || parsed.protocol === "http:" || parsed.protocol === "about:"
+  } catch {
+    return false
+  }
+}
+
+function normalizeNavigationUrl(value) {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  const candidate = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed) ? trimmed : `https://${trimmed}`
+  return isSafeWebUrl(candidate) ? candidate : null
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -185,7 +211,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, "preload.js"),
-      partition: "persist:secure-session",
+      partition: "secure-session",
       sandbox: true,
       webSecurity: true,
       allowRunningInsecureContent: false,
@@ -233,13 +259,13 @@ function createWindow() {
 function createTab(url = "about:blank") {
   const tabId = `tab-${++tabCounter}-${Date.now()}`
 
-  const tabSession = session.fromPartition(`persist:tab-${tabId}`, { cache: false })
+  const tabSession = session.fromPartition(`tab-${tabId}`, { cache: false })
 
   const view = new BrowserView({
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      partition: `persist:tab-${tabId}`,
+      partition: `tab-${tabId}`,
       sandbox: true,
       webSecurity: true,
       allowRunningInsecureContent: false,
@@ -260,8 +286,8 @@ function createTab(url = "about:blank") {
   }
 
   const customUserAgent =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-  tabSession.setUserAgent(customUserAgent + " DNT/1")
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+  tabSession.setUserAgent(customUserAgent)
 
   view.webContents.on("did-start-loading", () => {
     if (activeTabId === tabId) {
@@ -293,8 +319,19 @@ function createTab(url = "about:blank") {
 
   tabs.set(tabId, view)
 
+  view.webContents.on("will-navigate", (event, navigationUrl) => {
+    if (!isSafeWebUrl(navigationUrl)) {
+      event.preventDefault()
+    }
+  })
+
+  view.webContents.on("will-attach-webview", (event) => {
+    event.preventDefault()
+  })
+
   if (url && url !== "about:blank") {
-    view.webContents.loadURL(url)
+    const safeUrl = normalizeNavigationUrl(url)
+    if (safeUrl) view.webContents.loadURL(safeUrl)
   }
 
   return tabId
@@ -317,24 +354,20 @@ function configureTabSecurity(ses) {
   ses.clearAuthCache()
   ses.clearHostResolverCache()
 
-  ses.setPermissionRequestHandler((webContents, permission, callback) => {
-    const deniedPermissions = [
-      "geolocation",
-      "notifications",
-      "media",
-      "mediaKeySystem",
-      "midi",
-      "pointerLock",
-      "fullscreen",
-      "openExternal",
-      "clipboard-read",
-      "clipboard-sanitized-write",
-    ]
-    callback(deniedPermissions.includes(permission) ? false : true)
-  })
+  ses.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false))
+  ses.setPermissionCheckHandler(() => false)
+  ses.setDevicePermissionHandler(() => false)
+  if (typeof ses.setDisplayMediaRequestHandler === "function") {
+    ses.setDisplayMediaRequestHandler((_request, callback) => callback({}))
+  }
 
   ses.webRequest.onBeforeRequest((details, callback) => {
     const url = details.url.toLowerCase()
+    if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("about:")) {
+      callback({ cancel: true })
+      return
+    }
+
     let shouldBlock = false
     let blockType = null
 
@@ -506,7 +539,7 @@ async function clearAllData() {
     await ses.clearHostResolverCache()
   }
 
-  store.clear()
+  if (store) store.clear()
 
   console.log("[Secure Browser] All data cleared")
 }
@@ -515,11 +548,10 @@ ipcMain.handle("navigate", async (event, url) => {
   const view = tabs.get(activeTabId)
   if (!view) return { success: false }
 
-  if (!url.startsWith("http://") && !url.startsWith("https://")) {
-    url = "https://" + url
-  }
+  const safeUrl = normalizeNavigationUrl(url)
+  if (!safeUrl) return { success: false, error: "Unsupported URL scheme" }
 
-  view.webContents.loadURL(url)
+  view.webContents.loadURL(safeUrl)
   return { success: true }
 })
 
@@ -564,14 +596,19 @@ ipcMain.handle("clear-data", async () => {
 ipcMain.handle("set-proxy", async (event, config) => {
   const ses = mainWindow.webContents.session
   if (config && config.enabled) {
+    const port = Number.parseInt(config.port, 10)
+    if (!["socks5", "http"].includes(config.type) || !config.host || !Number.isInteger(port) || port < 1 || port > 65535) {
+      return { success: false, error: "Invalid proxy configuration" }
+    }
+
     const proxyRules =
       config.type === "socks5"
-        ? `socks5://${config.host}:${config.port}`
-        : `http=${config.host}:${config.port};https=${config.host}:${config.port}`
+        ? `socks5://${config.host}:${port}`
+        : `http=${config.host}:${port};https=${config.host}:${port}`
 
     await ses.setProxy({ proxyRules })
     proxyConfig = proxyRules
-    store.set("proxy", config)
+    store.set("proxy", { ...config, port })
   } else {
     await ses.setProxy({})
     proxyConfig = null
@@ -624,11 +661,11 @@ ipcMain.handle("get-browser-info", () => {
   return {
     name: "B2 Secure Browser",
     version: "1.0.0",
-    description: "Ultra-secure, anonymous browser with zero logs and complete stealth mode",
+    description: "Privacy-hardened anonymous browser with ephemeral sessions and local trace reduction",
     author: "B2-Torrent Team",
     license: "Personal Use Only",
     features: [
-      "Zero logs - No history, no cache, no traces",
+      "Ephemeral sessions with no saved history or cache",
       "Advanced ad blocking",
       "Tracker blocking",
       "Malware protection",
@@ -651,15 +688,20 @@ ipcMain.handle("get-browser-info", () => {
 })
 
 ipcMain.handle("b2-search", async (event, query) => {
+  if (!searchEngine) {
+    return { error: true, message: "Search engine unavailable.", query }
+  }
   const results = await searchEngine.search(query)
   return results
 })
 
 ipcMain.handle("get-search-settings", () => {
+  if (!searchEngine) return {}
   return searchEngine.loadSettings()
 })
 
 ipcMain.handle("save-search-settings", (event, settings) => {
+  if (!searchEngine) return { success: false, error: "Search engine unavailable" }
   searchEngine.saveSettings(settings)
   return { success: true }
 })
@@ -697,11 +739,10 @@ ipcMain.handle("tab-navigate", async (event, { tabId, url }) => {
   const view = tabs.get(tabId || activeTabId)
   if (!view) return { success: false }
 
-  if (!url.startsWith("http://") && !url.startsWith("https://")) {
-    url = "https://" + url
-  }
+  const safeUrl = normalizeNavigationUrl(url)
+  if (!safeUrl) return { success: false, error: "Unsupported URL scheme" }
 
-  view.webContents.loadURL(url)
+  view.webContents.loadURL(safeUrl)
   return { success: true }
 })
 
@@ -737,7 +778,15 @@ ipcMain.handle("tab-stop", async (event, tabId) => {
   return { success: true }
 })
 
-app.on("ready", () => {
+app.on("ready", async () => {
+  try {
+    await initializeStorage()
+  } catch (error) {
+    console.error("[Secure Browser] Failed to initialize storage:", error)
+    app.quit()
+    return
+  }
+
   const savedProxy = store.get("proxy")
   if (savedProxy && savedProxy.enabled) {
     proxyConfig =
@@ -755,6 +804,8 @@ app.on("ready", () => {
 
   session.defaultSession.setSpellCheckerEnabled(false)
   session.defaultSession.setDevicePermissionHandler(() => false)
+  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false))
+  session.defaultSession.setPermissionCheckHandler(() => false)
 })
 
 app.on("window-all-closed", () => {

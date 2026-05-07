@@ -29,15 +29,15 @@ type Client struct {
 }
 
 type ClientConfig struct {
-	ProxyChain []string
-	DataDir    string
-	EnableDHT  bool
-	MaxRetries int
-	TorEnabled bool // Add Tor enabled config
-	NoLogsMode         bool
-	ObfuscateTraffic   bool
-	DisableHistory     bool
-	DisableMetadata    bool
+	ProxyChain       []string
+	DataDir          string
+	EnableDHT        bool
+	MaxRetries       int
+	TorEnabled       bool // Add Tor enabled config
+	NoLogsMode       bool
+	ObfuscateTraffic bool
+	DisableHistory   bool
+	DisableMetadata  bool
 }
 
 type TorrentLimits struct {
@@ -46,22 +46,26 @@ type TorrentLimits struct {
 }
 
 type TorrentInfo struct {
-	InfoHash     string  `json:"infoHash"`
-	Name         string  `json:"name"`
-	TotalSize    int64   `json:"totalSize"`
-	Downloaded   int64   `json:"downloaded"`
-	Uploaded     int64   `json:"uploaded"`
-	DownloadRate int64   `json:"downloadRate"`
-	UploadRate   int64   `json:"uploadRate"`
-	Progress     float64 `json:"progress"`
-	Status       string  `json:"status"`
-	Peers        int     `json:"peers"`
-	Seeders      int     `json:"seeders"`
-	ETA          int64   `json:"eta"`
-	Ratio        float64 `json:"ratio"`
-	Favorite      bool `json:"favorite,omitempty"`
-	DownloadLimit int  `json:"downloadLimit,omitempty"`
-	UploadLimit   int  `json:"uploadLimit,omitempty"`
+	ID            string  `json:"id"`
+	InfoHash      string  `json:"infoHash"`
+	Name          string  `json:"name"`
+	Size          int64   `json:"size"`
+	TotalSize     int64   `json:"totalSize"`
+	Downloaded    int64   `json:"downloaded"`
+	Uploaded      int64   `json:"uploaded"`
+	DownloadSpeed int64   `json:"downloadSpeed"`
+	DownloadRate  int64   `json:"downloadRate"`
+	UploadSpeed   int64   `json:"uploadSpeed"`
+	UploadRate    int64   `json:"uploadRate"`
+	Progress      float64 `json:"progress"`
+	Status        string  `json:"status"`
+	Peers         int     `json:"peers"`
+	Seeders       int     `json:"seeders"`
+	ETA           int64   `json:"eta"`
+	Ratio         float64 `json:"ratio"`
+	Favorite      bool    `json:"favorite,omitempty"`
+	DownloadLimit int     `json:"downloadLimit,omitempty"`
+	UploadLimit   int     `json:"uploadLimit,omitempty"`
 }
 
 type ProxyConnection struct {
@@ -98,7 +102,7 @@ func NewClient(proxyChainStr string, downloadDir string) (*Client, error) {
 			proxyChain[i] = strings.TrimSpace(proxyChain[i])
 		}
 	}
-	
+
 	if len(proxyChain) == 0 && torEnabled {
 		if _, err := os.Stat("/.dockerenv"); err == nil {
 			proxyChain = []string{"tor:9050"}
@@ -116,7 +120,7 @@ func NewClient(proxyChainStr string, downloadDir string) (*Client, error) {
 
 	var multiDialer *MultiProxyDialer
 	var err error
-	
+
 	if torEnabled && len(proxyChain) > 0 {
 		multiDialer, err = NewMultiProxyDialer(proxyChain)
 		if err != nil {
@@ -138,9 +142,14 @@ func NewClient(proxyChainStr string, downloadDir string) (*Client, error) {
 			}, nil
 		}
 
-		cfg.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		cfg.HTTPDialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 			return multiDialer.DialContext(ctx, network, addr)
 		}
+		cfg.TrackerDialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return multiDialer.DialContext(ctx, network, addr)
+		}
+		cfg.DialForPeerConns = false
+		cfg.AcceptPeerConnections = false
 	}
 
 	if noLogsMode {
@@ -173,6 +182,9 @@ func NewClient(proxyChainStr string, downloadDir string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create torrent client: %w", err)
 	}
+	if torEnabled && multiDialer != nil {
+		client.AddDialer(proxyPeerDialer{network: "tcp", dialer: multiDialer})
+	}
 
 	logger.Info("Torrent client initialized successfully")
 
@@ -185,15 +197,15 @@ func NewClient(proxyChainStr string, downloadDir string) (*Client, error) {
 		torrentLimits:    make(map[string]*TorrentLimits),
 		globalLimits:     &TorrentLimits{DownloadLimit: 0, UploadLimit: 0},
 		config: &ClientConfig{
-			ProxyChain:         proxyChain,
-			DataDir:            downloadDir,
-			EnableDHT:          false,
-			MaxRetries:         3,
-			TorEnabled:         torEnabled,
-			NoLogsMode:         noLogsMode,
-			ObfuscateTraffic:   obfuscateTraffic,
-			DisableHistory:     noLogsMode,
-			DisableMetadata:    noLogsMode,
+			ProxyChain:       proxyChain,
+			DataDir:          downloadDir,
+			EnableDHT:        false,
+			MaxRetries:       3,
+			TorEnabled:       torEnabled,
+			NoLogsMode:       noLogsMode,
+			ObfuscateTraffic: obfuscateTraffic,
+			DisableHistory:   noLogsMode,
+			DisableMetadata:  noLogsMode,
 		},
 	}, nil
 }
@@ -202,7 +214,11 @@ func (c *Client) AddMagnet(magnetURI string) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.logger.Info("Adding magnet link", zap.String("uri", magnetURI[:50]+"..."))
+	if !strings.HasPrefix(strings.ToLower(magnetURI), "magnet:?") {
+		return "", fmt.Errorf("invalid magnet URI")
+	}
+
+	c.logger.Info("Adding magnet link")
 
 	t, err := c.client.AddMagnet(magnetURI)
 	if err != nil {
@@ -234,13 +250,18 @@ func (c *Client) AddMagnet(magnetURI string) (string, error) {
 
 func (c *Client) GetTorrent(infoHash string) (*TorrentInfo, error) {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	t, ok := c.torrents[infoHash]
 	if !ok {
+		c.mu.RUnlock()
 		return nil, fmt.Errorf("torrent not found: %s", infoHash)
 	}
+	limits := c.torrentLimits[infoHash]
+	c.mu.RUnlock()
 
+	return c.torrentInfo(infoHash, t, limits), nil
+}
+
+func (c *Client) torrentInfo(infoHash string, t *torrent.Torrent, limits *TorrentLimits) *TorrentInfo {
 	stats := t.Stats()
 	progress := 0.0
 	if t.Length() > 0 {
@@ -265,7 +286,6 @@ func (c *Client) GetTorrent(infoHash string) (*TorrentInfo, error) {
 		ratio = float64(stats.BytesWrittenData.Int64()) / float64(t.BytesCompleted())
 	}
 
-	limits := c.torrentLimits[infoHash]
 	downloadLimit := 0
 	uploadLimit := 0
 	if limits != nil {
@@ -274,33 +294,45 @@ func (c *Client) GetTorrent(infoHash string) (*TorrentInfo, error) {
 	}
 
 	return &TorrentInfo{
-		InfoHash:     infoHash,
-		Name:         t.Name(),
-		TotalSize:    t.Length(),
-		Downloaded:   t.BytesCompleted(),
-		Uploaded:     stats.BytesWrittenData.Int64(),
-		DownloadRate: stats.BytesReadData.Int64(),
-		UploadRate:   stats.BytesWrittenData.Int64(),
-		Progress:     progress,
-		Status:       status,
-		Peers:        stats.ActivePeers,
-		Seeders:      stats.ConnectedSeeders,
-		ETA:          eta,
-		Ratio:        ratio,
+		ID:            infoHash,
+		InfoHash:      infoHash,
+		Name:          t.Name(),
+		Size:          t.Length(),
+		TotalSize:     t.Length(),
+		Downloaded:    t.BytesCompleted(),
+		Uploaded:      stats.BytesWrittenData.Int64(),
+		DownloadSpeed: stats.BytesReadData.Int64(),
+		DownloadRate:  stats.BytesReadData.Int64(),
+		UploadSpeed:   stats.BytesWrittenData.Int64(),
+		UploadRate:    stats.BytesWrittenData.Int64(),
+		Progress:      progress,
+		Status:        status,
+		Peers:         stats.ActivePeers,
+		Seeders:       stats.ConnectedSeeders,
+		ETA:           eta,
+		Ratio:         ratio,
 		DownloadLimit: downloadLimit,
 		UploadLimit:   uploadLimit,
-	}, nil
+	}
 }
 
 func (c *Client) GetAllTorrents() []*TorrentInfo {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
+	snapshot := make(map[string]struct {
+		t      *torrent.Torrent
+		limits *TorrentLimits
+	}, len(c.torrents))
+	for infoHash, t := range c.torrents {
+		snapshot[infoHash] = struct {
+			t      *torrent.Torrent
+			limits *TorrentLimits
+		}{t: t, limits: c.torrentLimits[infoHash]}
+	}
+	c.mu.RUnlock()
 
 	var infos []*TorrentInfo
-	for infoHash := range c.torrents {
-		if info, err := c.GetTorrent(infoHash); err == nil {
-			infos = append(infos, info)
-		}
+	for infoHash, item := range snapshot {
+		infos = append(infos, c.torrentInfo(infoHash, item.t, item.limits))
 	}
 	return infos
 }
@@ -391,7 +423,7 @@ func (c *Client) GetProxyConnections() []ProxyConnection {
 
 	connections := make([]ProxyConnection, 0)
 	countries := []string{"US", "DE", "NL", "CH", "SE", "NO", "FR", "UK"}
-	
+
 	// Generate mock connections based on proxy chain
 	for i, proxy := range c.config.ProxyChain {
 		parts := strings.Split(proxy, ":")
@@ -428,11 +460,11 @@ func (c *Client) SetTorEnabled(enabled bool) error {
 
 	c.torEnabled = enabled
 	c.config.TorEnabled = enabled
-	
+
 	c.logger.Info("Tor network toggled",
 		zap.Bool("enabled", enabled),
 	)
-	
+
 	return nil
 }
 
@@ -440,6 +472,25 @@ func (c *Client) IsTorEnabled() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.torEnabled
+}
+
+func (c *Client) IsTorConnected() bool {
+	connected, err := c.GetTorStatus()
+	return err == nil && connected
+}
+
+func (c *Client) SetNoLogsMode(enabled bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.config.NoLogsMode = enabled
+	c.config.DisableHistory = enabled
+	c.config.DisableMetadata = enabled
+}
+
+func (c *Client) SetTrafficObfuscation(enabled bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.config.ObfuscateTraffic = enabled
 }
 
 func (c *Client) SetLimits(infoHash string, downloadLimit, uploadLimit int) error {

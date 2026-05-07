@@ -1,13 +1,13 @@
 {
   "name": "b2-secure-browser",
   "version": "1.0.0",
-  "description": "Ultra-Secure Anonymous Browser - No Logs, No History, Full Privacy",
+  "description": "Privacy-hardened anonymous browser with ephemeral sessions and local trace reduction",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
     "build": "electron-builder --publish never",
-    "build:win": "electron-builder --win --x64",
+    "build:win": "electron-builder --win --x64 --arm64",
     "build:mac": "electron-builder --mac --x64 --arm64",
     "build:linux": "electron-builder --linux --x64",
     "pack": "electron-builder --dir",
@@ -21,23 +21,20 @@
     "directories": {
       "output": "dist"
     },
-    "files": ["main.js", "preload.js", "renderer.js", "search-engine.js", "index.html", "styles.css", "icons/**/*"],
+    "files": ["main.js", "preload.js", "renderer.js", "search-engine.js", "index.html", "styles.css"],
     "asar": true,
-    "asarUnpack": ["icons/**/*"],
     "win": {
       "target": ["nsis", "portable", "zip"],
-      "icon": "icons/icon.ico",
       "artifactName": "B2-Secure-Browser-${version}-${arch}.${ext}"
     },
     "mac": {
       "target": ["dmg", "zip"],
-      "icon": "icons/icon.icns",
       "category": "public.app-category.utilities",
+      "hardenedRuntime": true,
       "artifactName": "B2-Secure-Browser-${version}-${arch}.${ext}"
     },
     "linux": {
       "target": ["AppImage", "deb", "rpm", "tar.gz"],
-      "icon": "icons/icon.png",
       "category": "Network",
       "artifactName": "B2-Secure-Browser-${version}-${arch}.${ext}"
     },
@@ -52,12 +49,12 @@
     }
   },
   "dependencies": {
-    "electron-store": "^8.1.0",
-    "axios": "^1.6.5",
-    "cheerio": "^1.0.0-rc.12"
+    "electron-store": "^11.0.2",
+    "axios": "^1.16.0",
+    "cheerio": "^1.2.0"
   },
   "devDependencies": {
-    "electron": "^28.1.0",
-    "electron-builder": "^24.9.1"
+    "electron": "^42.0.0",
+    "electron-builder": "^26.8.1"
   }
 }

@@ -8,7 +8,6 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 
 	"go.uber.org/zap"
@@ -19,12 +18,12 @@ import (
 )
 
 type EncryptionConfig struct {
-	Algorithm      string // AES-256-GCM, ChaCha20-Poly1305, etc.
-	KeyDerivation  string // PBKDF2, Argon2id, scrypt
-	HashAlgorithm  string // SHA-256, SHA-512, BLAKE2b
-	Iterations     int
-	MemoryCost     uint32 // For Argon2
-	Parallelism    uint8  // For Argon2
+	Algorithm     string // AES-256-GCM, ChaCha20-Poly1305, etc.
+	KeyDerivation string // PBKDF2, Argon2id, scrypt
+	HashAlgorithm string // SHA-256, SHA-512, BLAKE2b
+	Iterations    int
+	MemoryCost    uint32 // For Argon2
+	Parallelism   uint8  // For Argon2
 }
 
 type EncryptionManager struct {
@@ -42,7 +41,7 @@ func NewEncryptionManager(config *EncryptionConfig, logger *zap.Logger) *Encrypt
 	if config.Parallelism == 0 {
 		config.Parallelism = 4 // Default Argon2 parallelism
 	}
-	
+
 	return &EncryptionManager{
 		config: config,
 		logger: logger,
@@ -53,26 +52,18 @@ func (em *EncryptionManager) DeriveKey(password string, salt []byte, keySize int
 	switch em.config.KeyDerivation {
 	case "Argon2id":
 		return argon2.IDKey([]byte(password), salt, 1, em.config.MemoryCost, em.config.Parallelism, uint32(keySize)), nil
-		
+
 	case "scrypt":
 		return scrypt.Key([]byte(password), salt, 32768, 8, 1, keySize)
-		
+
 	case "PBKDF2":
 		fallthrough
 	default:
-		var hashFunc func() []byte
+		hashFunc := sha256.New
 		if em.config.HashAlgorithm == "SHA-512" {
-			hashFunc = func() []byte {
-				h := sha512.New()
-				return h.Sum(nil)
-			}
-		} else {
-			hashFunc = func() []byte {
-				h := sha256.New()
-				return h.Sum(nil)
-			}
+			hashFunc = sha512.New
 		}
-		return pbkdf2.Key([]byte(password), salt, em.config.Iterations, keySize, sha256.New), nil
+		return pbkdf2.Key([]byte(password), salt, em.config.Iterations, keySize, hashFunc), nil
 	}
 }
 
@@ -86,14 +77,14 @@ func (em *EncryptionManager) EncryptFile(inputPath, outputPath, password string)
 	// Derive key from password
 	var key []byte
 	var err error
-	
+
 	switch em.config.Algorithm {
 	case "ChaCha20-Poly1305":
 		key, err = em.DeriveKey(password, salt, chacha20poly1305.KeySize)
 	default: // AES variants
 		key, err = em.DeriveKey(password, salt, 32) // 256-bit key
 	}
-	
+
 	if err != nil {
 		return fmt.Errorf("key derivation failed: %w", err)
 	}
@@ -107,37 +98,37 @@ func (em *EncryptionManager) EncryptFile(inputPath, outputPath, password string)
 	// Encrypt based on algorithm
 	var ciphertext []byte
 	var nonce []byte
-	
+
 	switch em.config.Algorithm {
 	case "ChaCha20-Poly1305":
 		aead, err := chacha20poly1305.New(key)
 		if err != nil {
 			return fmt.Errorf("failed to create ChaCha20-Poly1305 cipher: %w", err)
 		}
-		
+
 		nonce = make([]byte, aead.NonceSize())
 		if _, err := rand.Read(nonce); err != nil {
 			return fmt.Errorf("failed to generate nonce: %w", err)
 		}
-		
+
 		ciphertext = aead.Seal(nil, nonce, plaintext, nil)
-		
+
 	default: // AES-256-GCM
 		block, err := aes.NewCipher(key)
 		if err != nil {
 			return fmt.Errorf("failed to create AES cipher: %w", err)
 		}
-		
+
 		gcm, err := cipher.NewGCM(block)
 		if err != nil {
 			return fmt.Errorf("failed to create GCM: %w", err)
 		}
-		
+
 		nonce = make([]byte, gcm.NonceSize())
 		if _, err := rand.Read(nonce); err != nil {
 			return fmt.Errorf("failed to generate nonce: %w", err)
 		}
-		
+
 		ciphertext = gcm.Seal(nil, nonce, plaintext, nil)
 	}
 
@@ -187,13 +178,16 @@ func (em *EncryptionManager) DecryptFile(inputPath, outputPath, password string)
 			break
 		}
 	}
-	
+
 	data = data[headerEnd:] // Skip header
+	if len(data) < 32 {
+		return fmt.Errorf("encrypted payload is missing salt")
+	}
 
 	// Extract salt and nonce
 	salt := data[:32]
 	data = data[32:]
-	
+
 	var nonceSize int
 	switch em.config.Algorithm {
 	case "ChaCha20-Poly1305":
@@ -201,7 +195,10 @@ func (em *EncryptionManager) DecryptFile(inputPath, outputPath, password string)
 	default:
 		nonceSize = 12 // GCM nonce size
 	}
-	
+	if len(data) < nonceSize {
+		return fmt.Errorf("encrypted payload is missing nonce")
+	}
+
 	nonce := data[:nonceSize]
 	ciphertext := data[nonceSize:]
 
@@ -213,37 +210,37 @@ func (em *EncryptionManager) DecryptFile(inputPath, outputPath, password string)
 	default:
 		key, err = em.DeriveKey(password, salt, 32)
 	}
-	
+
 	if err != nil {
 		return fmt.Errorf("key derivation failed: %w", err)
 	}
 
 	// Decrypt
 	var plaintext []byte
-	
+
 	switch em.config.Algorithm {
 	case "ChaCha20-Poly1305":
 		aead, err := chacha20poly1305.New(key)
 		if err != nil {
 			return fmt.Errorf("failed to create ChaCha20-Poly1305 cipher: %w", err)
 		}
-		
+
 		plaintext, err = aead.Open(nil, nonce, ciphertext, nil)
 		if err != nil {
 			return fmt.Errorf("decryption failed: %w", err)
 		}
-		
+
 	default: // AES-256-GCM
 		block, err := aes.NewCipher(key)
 		if err != nil {
 			return fmt.Errorf("failed to create AES cipher: %w", err)
 		}
-		
+
 		gcm, err := cipher.NewGCM(block)
 		if err != nil {
 			return fmt.Errorf("failed to create GCM: %w", err)
 		}
-		
+
 		plaintext, err = gcm.Open(nil, nonce, ciphertext, nil)
 		if err != nil {
 			return fmt.Errorf("decryption failed: %w", err)

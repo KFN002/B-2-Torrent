@@ -285,7 +285,7 @@ make clean
 curl -X POST http://localhost:8080/api/cleanup
 
 # Docker cleanup
-docker-compose down -v
+docker compose down -v
 ```
 
 #### Secure File Deletion
@@ -298,7 +298,7 @@ docker-compose down -v
 #### Full System Reset
 ```bash
 # Stop all services
-docker-compose down
+docker compose down
 
 # Remove all volumes
 docker volume prune -f

@@ -57,30 +57,30 @@ quick-start: optimize up
 
 dev:
 	@echo "Starting in development mode..."
-	docker-compose -f docker-compose.yml up -d
+	docker compose up -d --build
 	@echo "Dev environment ready at http://localhost:3000"
 
 prod: optimize
 	@echo "Starting in production mode (optimized)..."
-	docker-compose up -d
+	docker compose up -d
 	@echo "Production environment ready at http://localhost"
 
 up:
 	@echo "🚀 Starting B-2-Torrent services..."
-	docker-compose up -d
+	docker compose up -d
 	@echo "✅ Services started at http://localhost"
 
 down:
 	@echo "⏹️  Stopping services..."
-	docker-compose down
+	docker compose down
 
 build:
 	@echo "🔨 Building with BuildKit (cached)..."
-	DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker-compose build --parallel
+	DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker compose build
 
 rebuild:
 	@echo "🔨 Rebuilding all images from scratch..."
-	DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker-compose build --no-cache --parallel
+	DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker compose build --no-cache
 
 optimize:
 	@echo "⚡ Optimizing system..."
@@ -89,7 +89,7 @@ optimize:
 	@echo "  Pruning build cache..."
 	@docker builder prune -f
 	@echo "  Optimizing database..."
-	@docker-compose exec -T postgres vacuumdb -U torrentuser -d torrentdb --analyze --verbose || true
+	@docker compose exec -T postgres vacuumdb -U torrentuser -d torrentdb --analyze --verbose || true
 	@echo "✅ Optimization complete"
 
 clean-cache:
@@ -103,43 +103,43 @@ prune:
 
 clean:
 	@echo "🧹 Cleaning up data and volumes..."
-	docker-compose down -v
+	docker compose down -v
 	@echo "✅ Cleanup complete"
 
 clean-all:
 	@echo "🧹 Deep cleaning everything..."
-	docker-compose down -v --remove-orphans
+	docker compose down -v --remove-orphans
 	docker system prune -af --volumes
-	$(RM) node_modules
-	$(RM) .next
+	$(RM) frontend/node_modules
+	$(RM) frontend/.next
 	@echo "✅ Deep clean complete"
 
 logs:
-	docker-compose logs -f --tail=100
+	docker compose logs -f --tail=100
 
 logs-gateway:
-	docker-compose logs -f --tail=100 api-gateway
+	docker compose logs -f --tail=100 backend
 
 logs-frontend:
-	docker-compose logs -f --tail=100 frontend
+	docker compose logs -f --tail=100 frontend
 
 logs-backend:
-	docker-compose logs -f --tail=100 backend
+	docker compose logs -f --tail=100 backend
 
 restart:
 	@echo "♻️  Restarting all services..."
-	docker-compose restart
+	docker compose restart
 
 health:
 	@echo "🏥 Health Check Report:"
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@docker-compose ps
+	@docker compose ps
 	@echo ""
 	@echo "🌐 Nginx: $$(curl -s -o /dev/null -w '%%{http_code}' http://localhost/health || echo 'DOWN')"
 	@echo "🔌 Frontend: $$(curl -s -o /dev/null -w '%%{http_code}' http://localhost:3000 || echo 'DOWN')"
-	@echo "⚙️  API Gateway: $$(curl -s -o /dev/null -w '%%{http_code}' http://localhost:8000/health || echo 'DOWN')"
-	@echo "🗄️  PostgreSQL: $$(docker-compose exec -T postgres pg_isready -U torrentuser && echo 'UP' || echo 'DOWN')"
-	@echo "📦 Redis: $$(docker-compose exec -T redis redis-cli ping 2>/dev/null || echo 'DOWN')"
+	@echo "⚙️  Backend API: $$(curl -s -o /dev/null -w '%%{http_code}' http://localhost:8080/api/health || echo 'DOWN')"
+	@echo "🗄️  PostgreSQL: $$(docker compose exec -T postgres pg_isready -U torrentuser && echo 'UP' || echo 'DOWN')"
+	@echo "📦 Redis: $$(docker compose exec -T redis redis-cli ping 2>/dev/null || echo 'DOWN')"
 	@echo "🐰 RabbitMQ: $$(curl -s -o /dev/null -w '%%{http_code}' http://localhost:15672 || echo 'DOWN')"
 
 stats:
@@ -150,8 +150,8 @@ stats:
 benchmark:
 	@echo "🏃 Running performance benchmarks..."
 	@which ab > /dev/null || (echo "Install apache-bench: brew install httpd (Mac) or apt-get install apache2-utils (Linux)" && exit 1)
-	@echo "Testing API Gateway (10K requests, 100 concurrent)..."
-	@ab -n 10000 -c 100 -q http://localhost:8000/health
+	@echo "Testing Backend API (10K requests, 100 concurrent)..."
+	@ab -n 10000 -c 100 -q http://localhost:8080/api/health
 	@echo ""
 	@echo "Testing Frontend (5K requests, 50 concurrent)..."
 	@ab -n 5000 -c 50 -q http://localhost:3000/
@@ -159,18 +159,18 @@ benchmark:
 backup:
 	@echo "💾 Creating database backup..."
 	@$(MKDIR) backups
-	@docker-compose exec -T postgres pg_dump -U torrentuser torrentdb > backups/backup_$$(date +%Y%m%d_%H%M%S).sql
+	@docker compose exec -T postgres pg_dump -U torrentuser torrentdb > backups/backup_$$(date +%Y%m%d_%H%M%S).sql
 	@echo "✅ Backup saved to backups/"
 
 restore:
 	@echo "📥 Restoring from latest backup..."
-	@ls -t backups/*.sql | head -1 | xargs -I {} docker-compose exec -T postgres psql -U torrentuser torrentdb < {}
+	@ls -t backups/*.sql | head -1 | xargs -I {} docker compose exec -T postgres psql -U torrentuser torrentdb < {}
 	@echo "✅ Restore complete"
 
 db-optimize:
 	@echo "⚡ Optimizing PostgreSQL database..."
-	@docker-compose exec -T postgres vacuumdb -U torrentuser -d torrentdb --analyze --verbose
-	@docker-compose exec -T postgres psql -U torrentuser -d torrentdb -c "REINDEX DATABASE torrentdb;"
+	@docker compose exec -T postgres vacuumdb -U torrentuser -d torrentdb --analyze --verbose
+	@docker compose exec -T postgres psql -U torrentuser -d torrentdb -c "REINDEX DATABASE torrentdb;"
 	@echo "✅ Database optimized"
 
 monitor:
@@ -193,12 +193,13 @@ test:
 	@echo "Backend tests..."
 	cd backend && go test -v -race -coverprofile=coverage.out ./...
 	@echo "Frontend tests..."
-	npm run test
+	cd frontend && pnpm run lint
 
 install-deps:
 	@echo "📦 Installing all dependencies..."
 	@echo "Installing frontend dependencies..."
-	npm install
+	corepack enable
+	pnpm --dir frontend install --frozen-lockfile
 	@echo "Installing browser dependencies..."
 	cd browser && npm install
 	@echo "Installing Go dependencies..."

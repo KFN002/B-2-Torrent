@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-src 'none';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>B2 Secure Browser - Stealth Mode</title>
   <link rel="stylesheet" href="styles.css">
@@ -143,11 +144,11 @@
               <li>🚫 <strong>Ad Blocking:</strong> Automatically blocks ads, banners, and sponsored content</li>
               <li>👁️ <strong>Tracker Blocking:</strong> Prevents analytics, trackers, and telemetry scripts</li>
               <li>🦠 <strong>Malware Protection:</strong> Blocks known malware, viruses, and cryptominers</li>
-              <li>🔒 <strong>Zero Data Persistence:</strong> All browsing data cleared on exit - no traces</li>
+              <li>🔒 <strong>Ephemeral Data:</strong> Browsing data is cleared on exit</li>
               <li>🎭 <strong>Anti-Fingerprinting:</strong> Canvas, WebGL, and audio fingerprinting protection</li>
               <li>🕐 <strong>Timezone Spoofing:</strong> UTC timezone for location privacy</li>
               <li>🖥️ <strong>Screen Normalization:</strong> Standard resolution to prevent tracking</li>
-              <li>🌐 <strong>Tor/VPN Support:</strong> Configure proxy for complete anonymity</li>
+              <li>🌐 <strong>Tor/VPN Support:</strong> Configure a trusted proxy for network-layer privacy</li>
             </ul>
           </div>
         </div>
@@ -334,8 +335,8 @@
           </label>
         </div>
         <div class="modal-actions">
-          <button onclick="saveBrowserSettings()" class="primary-btn">Save</button>
-          <button onclick="document.getElementById('browserSettingsModal').style.display='none'" class="secondary-btn">Cancel</button>
+          <button id="save-browser-settings-btn" class="primary-btn">Save</button>
+          <button id="cancel-browser-settings-btn" class="secondary-btn">Cancel</button>
         </div>
       </div>
     </div>

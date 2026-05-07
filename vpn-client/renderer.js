@@ -1,226 +1,374 @@
-let connectionStatus = { connected: false }
+let currentStatus = { connected: false }
+let currentSettings = null
+let savedServers = []
 
-// Update UI with current status
-async function updateStatus() {
-  const status = await window.api.getStatus()
-  connectionStatus = status
+const elements = {
+  statusBadge: document.getElementById("statusBadge"),
+  connectBtn: document.getElementById("connectBtn"),
+  disconnectBtn: document.getElementById("disconnectBtn"),
+  connectionState: document.getElementById("connectionState"),
+  routeMode: document.getElementById("routeMode"),
+  activeServer: document.getElementById("activeServer"),
+  activeProtocol: document.getElementById("activeProtocol"),
+  uptimeValue: document.getElementById("uptimeValue"),
+  latencyValue: document.getElementById("latencyValue"),
+  helperValue: document.getElementById("helperValue"),
+  downSpeed: document.getElementById("downSpeed"),
+  upSpeed: document.getElementById("upSpeed"),
+  downTotal: document.getElementById("downTotal"),
+  upTotal: document.getElementById("upTotal"),
+  activeConnections: document.getElementById("activeConnections"),
+  killSwitchState: document.getElementById("killSwitchState"),
+  platformValue: document.getElementById("platformValue"),
+  cpuValue: document.getElementById("cpuValue"),
+  memoryValue: document.getElementById("memoryValue"),
+  electronValue: document.getElementById("electronValue"),
+  nodeValue: document.getElementById("nodeValue"),
+  linkInput: document.getElementById("linkInput"),
+  connectLinkBtn: document.getElementById("connectLinkBtn"),
+  addServerForm: document.getElementById("addServerForm"),
+  serverList: document.getElementById("serverList"),
+  serverCount: document.getElementById("serverCount"),
+  settingsForm: document.getElementById("settingsForm"),
+  settingsState: document.getElementById("settingsState"),
+  notice: document.getElementById("notice"),
+}
 
-  const statusBadge = document.getElementById("statusBadge")
-  const statusText = document.getElementById("statusText")
-  const publicIP = document.getElementById("publicIP")
-  const serverInfo = document.getElementById("serverInfo")
-  const protocolType = document.getElementById("protocolType")
-  const connectBtn = document.getElementById("connectBtn")
-  const disconnectBtn = document.getElementById("disconnectBtn")
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
 
-  if (status.connected) {
-    statusBadge.textContent = "Connected"
-    statusBadge.classList.add("connected")
-    statusText.textContent = "Connected"
-    publicIP.textContent = status.ip || "Loading..."
-    serverInfo.textContent = status.server || "N/A"
-    protocolType.textContent = status.type || "N/A"
-    connectBtn.style.display = "none"
-    disconnectBtn.style.display = "flex"
-  } else {
-    statusBadge.textContent = "Disconnected"
-    statusBadge.classList.remove("connected")
-    statusText.textContent = "Disconnected"
-    publicIP.textContent = "N/A"
-    serverInfo.textContent = "N/A"
-    protocolType.textContent = "N/A"
-    connectBtn.style.display = "flex"
-    disconnectBtn.style.display = "none"
+function setText(id, value) {
+  const element = document.getElementById(id)
+  if (element) element.textContent = value
+}
+
+function setChecked(id, value) {
+  const element = document.getElementById(id)
+  if (element) element.checked = Boolean(value)
+}
+
+function setValue(id, value) {
+  const element = document.getElementById(id)
+  if (element) element.value = value ?? ""
+}
+
+function getChecked(id) {
+  return document.getElementById(id).checked
+}
+
+function getValue(id) {
+  return document.getElementById(id).value
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes) || 0
+  const units = ["B", "KB", "MB", "GB", "TB"]
+  let amount = value
+  let unitIndex = 0
+
+  while (amount >= 1024 && unitIndex < units.length - 1) {
+    amount /= 1024
+    unitIndex += 1
+  }
+
+  return `${amount >= 10 || unitIndex === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[unitIndex]}`
+}
+
+function formatRate(bytes) {
+  return `${formatBytes(bytes)}/s`
+}
+
+function formatDuration(startedAt) {
+  if (!startedAt) return "0s"
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const rest = seconds % 60
+
+  if (hours > 0) return `${hours}h ${minutes}m`
+  if (minutes > 0) return `${minutes}m ${rest}s`
+  return `${rest}s`
+}
+
+function notify(message, tone = "neutral") {
+  elements.notice.textContent = message
+  elements.notice.dataset.tone = tone
+}
+
+function updateStatus(status) {
+  currentStatus = status
+  const connected = status.connected === true
+  const connecting = status.connecting === true
+
+  elements.statusBadge.textContent = connecting ? "Connecting" : connected ? "Connected" : "Disconnected"
+  elements.statusBadge.dataset.state = connecting ? "connecting" : connected ? "connected" : "disconnected"
+  elements.connectionState.textContent = connecting ? "Starting route" : connected ? "Route active" : "Idle"
+  elements.connectBtn.disabled = connecting || connected
+  elements.disconnectBtn.disabled = connecting && !connected
+
+  elements.routeMode.textContent = status.mode ? status.mode.toUpperCase() : "Proxy"
+  elements.activeServer.textContent = status.server || "None"
+  elements.activeProtocol.textContent = status.type ? status.type.toUpperCase() : "None"
+  elements.uptimeValue.textContent = formatDuration(status.connectedAt)
+  elements.latencyValue.textContent = status.health?.latencyMs ? `${status.health.latencyMs} ms` : "N/A"
+  elements.helperValue.textContent = status.tun?.active ? `${status.tun.helper} / ${status.tun.interfaceName}` : status.localProxy ? "Local proxy" : "None"
+  elements.downSpeed.textContent = formatRate(status.speed?.down)
+  elements.upSpeed.textContent = formatRate(status.speed?.up)
+  elements.downTotal.textContent = `${formatBytes(status.bytesTransferred?.down)} total`
+  elements.upTotal.textContent = `${formatBytes(status.bytesTransferred?.up)} total`
+  elements.activeConnections.textContent = String(status.activeConnections || 0)
+  elements.killSwitchState.textContent = status.killSwitchActive ? "Kill switch blocking" : "Kill switch clear"
+
+  if (status.specs) {
+    elements.platformValue.textContent = `${status.specs.platform} / ${status.specs.arch}`
+    elements.cpuValue.textContent = `${status.specs.cores} cores`
+    elements.memoryValue.textContent = `${formatBytes(status.specs.rssBytes)} app / ${formatBytes(status.specs.freeMemoryBytes)} free`
+    elements.electronValue.textContent = status.specs.electron || "N/A"
+    elements.nodeValue.textContent = status.specs.node || "N/A"
+  }
+
+  if (status.lastError) notify(status.lastError, "warning")
+}
+
+function applySettings(settings) {
+  currentSettings = settings
+  setValue("connectionMode", settings.connectionMode)
+  setValue("localPort", settings.localPort)
+  setChecked("allowLan", settings.allowLan)
+  setValue("networkService", settings.networkService)
+  setValue("killSwitchMode", settings.killSwitchMode)
+  setValue("ipv6Mode", settings.ipv6Mode)
+  setValue("dnsServers", (settings.dnsServers || []).join("\n"))
+  setChecked("dnsProtection", settings.dnsProtection)
+  setChecked("blockPrivateDestinations", settings.blockPrivateDestinations)
+  setChecked("autoReconnect", settings.autoReconnect)
+  setValue("maxReconnectAttempts", settings.maxReconnectAttempts)
+  setValue("healthCheckInterval", settings.healthCheckInterval)
+  setValue("connectTimeout", settings.connectTimeout)
+  setChecked("saveSecrets", settings.saveSecrets)
+  setChecked("minimizeLogs", settings.minimizeLogs)
+  setValue("tunHelper", settings.tun?.helper)
+  setValue("tunHelperPath", settings.tun?.helperPath)
+  setValue("tunInterfaceName", settings.tun?.interfaceName)
+  setValue("tunAddress", settings.tun?.address)
+  setValue("tunMtu", settings.tun?.mtu)
+  setValue("tunStack", settings.tun?.stack)
+  setChecked("tunAutoRoute", settings.tun?.autoRoute)
+  setChecked("tunStrictRoute", settings.tun?.strictRoute)
+  setValue("tunCustomArgs", settings.tun?.customArgs)
+}
+
+function readSettings() {
+  return {
+    connectionMode: getValue("connectionMode"),
+    localPort: Number.parseInt(getValue("localPort"), 10),
+    allowLan: getChecked("allowLan"),
+    networkService: getValue("networkService"),
+    killSwitchMode: getValue("killSwitchMode"),
+    ipv6Mode: getValue("ipv6Mode"),
+    dnsServers: getValue("dnsServers")
+      .split(/\n|,/)
+      .map((item) => item.trim())
+      .filter(Boolean),
+    dnsProtection: getChecked("dnsProtection"),
+    blockPrivateDestinations: getChecked("blockPrivateDestinations"),
+    autoReconnect: getChecked("autoReconnect"),
+    maxReconnectAttempts: Number.parseInt(getValue("maxReconnectAttempts"), 10),
+    healthCheckInterval: Number.parseInt(getValue("healthCheckInterval"), 10),
+    connectTimeout: Number.parseInt(getValue("connectTimeout"), 10),
+    saveSecrets: getChecked("saveSecrets"),
+    minimizeLogs: getChecked("minimizeLogs"),
+    tun: {
+      helper: getValue("tunHelper"),
+      helperPath: getValue("tunHelperPath"),
+      interfaceName: getValue("tunInterfaceName"),
+      address: getValue("tunAddress"),
+      mtu: Number.parseInt(getValue("tunMtu"), 10),
+      stack: getValue("tunStack"),
+      autoRoute: getChecked("tunAutoRoute"),
+      strictRoute: getChecked("tunStrictRoute"),
+      customArgs: getValue("tunCustomArgs"),
+    },
   }
 }
 
-// Load saved servers
-async function loadServers() {
-  const servers = await window.api.getServers()
-  const serverList = document.getElementById("serverList")
-
-  if (servers.length === 0) {
-    serverList.innerHTML = '<div class="info-text">No saved servers. Add one to get started!</div>'
-    return
-  }
-
-  serverList.innerHTML = servers
-    .map(
-      (server, index) => `
-        <div class="server-item">
-            <div class="server-info">
-                <div class="server-name">${server.name}</div>
-                <div class="server-details">${server.type.toUpperCase()} • ${server.host}:${server.port}</div>
-            </div>
-            <div class="server-actions">
-                <button class="btn btn-small btn-primary" onclick="connectToServer(${index})">Connect</button>
-                <button class="btn btn-small btn-danger" onclick="deleteServer(${index})">Delete</button>
-            </div>
-        </div>
-    `,
-    )
-    .join("")
-}
-
-// Connect to server
-async function connectToServer(index) {
-  const servers = await window.api.getServers()
-  const server = servers[index]
-
-  const result = await window.api.connectVPN(server)
-
-  if (result.success) {
-    await updateStatus()
-  } else {
-    alert("Connection failed: " + result.error)
-  }
-}
-
-// Delete server
-async function deleteServer(index) {
-  if (confirm("Delete this server?")) {
-    await window.api.deleteServer(index)
-    await loadServers()
-  }
-}
-
-// Show settings panel
-function showSettings() {
-  document.getElementById("settingsModal").style.display = "flex"
-  loadSettings()
-}
-
-// Load settings
 async function loadSettings() {
   const settings = await window.api.getSettings()
-
-  document.getElementById("killSwitch").checked = settings.killSwitch
-  document.getElementById("dnsProtection").checked = settings.dnsProtection
-  document.getElementById("ipv6Blocking").checked = settings.ipv6Blocking
-  document.getElementById("autoReconnect").checked = settings.autoReconnect
+  applySettings(settings)
 }
 
-// Save settings
-async function saveSettings() {
-  const settings = {
-    killSwitch: document.getElementById("killSwitch").checked,
-    dnsProtection: document.getElementById("dnsProtection").checked,
-    ipv6Blocking: document.getElementById("ipv6Blocking").checked,
-    autoReconnect: document.getElementById("autoReconnect").checked,
-    splitTunneling: { enabled: false, apps: [] },
-  }
-
-  await window.api.saveSettings(settings)
-  document.getElementById("settingsModal").style.display = "none"
-  alert("Settings saved successfully!")
+function serverSummary(server) {
+  const mode = currentSettings?.connectionMode || server.mode || "proxy"
+  const secret = server.secretRedacted ? "secret not saved" : server.uuid || server.password ? "secret saved" : "no secret"
+  return `${String(server.type).toUpperCase()} / ${mode.toUpperCase()} / ${server.host}:${server.port} / ${secret}`
 }
 
-// Show about panel
-async function showAbout() {
-  const info = await window.api.getAppInfo()
+async function loadServers() {
+  savedServers = await window.api.getServers()
+  elements.serverCount.textContent = `${savedServers.length} saved`
 
-  const aboutHTML = `
-    <div class="about-content">
-      <h1>${info.name}</h1>
-      <p class="version">Version ${info.version}</p>
-      <p class="description">${info.description}</p>
-      
-      <h3>Features</h3>
-      <ul class="feature-list">
-        ${info.features.map((f) => `<li>✓ ${f}</li>`).join("")}
-      </ul>
-      
-      <p class="author">Developed by ${info.author}</p>
-      <p class="license">License: ${info.license}</p>
-      
-      <div class="security-notice">
-        <strong>⚠️ Security Notice:</strong> This application provides maximum anonymity and security. 
-        All traffic is encrypted and routed through secure servers. No logs are kept. 
-        Kill-switch ensures no data leaks even if VPN disconnects.
-      </div>
-    </div>
-  `
-
-  document.getElementById("aboutModal").innerHTML = aboutHTML
-  document.getElementById("aboutModal").style.display = "flex"
-}
-
-// Event listeners
-document.getElementById("connectBtn").addEventListener("click", async () => {
-  const servers = await window.api.getServers()
-  if (servers.length > 0) {
-    connectToServer(0)
-  } else {
-    alert("Please add a server first or use Quick Connect via link.")
-  }
-})
-
-document.getElementById("disconnectBtn").addEventListener("click", async () => {
-  await window.api.disconnectVPN()
-  await updateStatus()
-})
-
-document.getElementById("connectLinkBtn").addEventListener("click", async () => {
-  const link = document.getElementById("linkInput").value.trim()
-
-  if (!link) {
-    alert("Please enter a connection link")
+  if (savedServers.length === 0) {
+    elements.serverList.innerHTML = '<div class="empty-state">No saved servers.</div>'
     return
   }
 
-  const result = await window.api.parseVlessLink(link)
+  elements.serverList.innerHTML = savedServers
+    .map(
+      (server, index) => `
+        <article class="server-card">
+          <div>
+            <strong>${escapeHTML(server.name || "Unnamed server")}</strong>
+            <span>${escapeHTML(serverSummary(server))}</span>
+          </div>
+          <div class="server-actions">
+            <button class="button small secondary" data-server-action="connect" data-server-index="${index}" type="button">Connect</button>
+            <button class="button small danger" data-server-action="delete" data-server-index="${index}" type="button">Delete</button>
+          </div>
+        </article>
+      `,
+    )
+    .join("")
+
+  elements.serverList.querySelectorAll("[data-server-action]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const index = Number(button.dataset.serverIndex)
+      if (!Number.isInteger(index) || index < 0) return
+      if (button.dataset.serverAction === "connect") await connectToServer(index)
+      if (button.dataset.serverAction === "delete") await deleteServer(index)
+    })
+  })
+}
+
+async function connectToServer(index) {
+  const server = savedServers[index]
+  if (!server) return
+
+  notify("Starting route...")
+  const result = await window.api.connectVPN({
+    ...server,
+    mode: getValue("connectionMode"),
+    localPort: Number.parseInt(getValue("localPort"), 10),
+    allowLan: getChecked("allowLan"),
+  })
 
   if (result.success) {
-    const connectResult = await window.api.connectVPN(result.config)
-    if (connectResult.success) {
-      await updateStatus()
-    } else {
-      alert("Connection failed: " + connectResult.error)
-    }
+    updateStatus(result.status)
+    notify("Route active.", "success")
   } else {
-    alert("Invalid link format: " + result.error)
+    notify(result.error, "danger")
   }
+}
+
+async function deleteServer(index) {
+  await window.api.deleteServer(index)
+  await loadServers()
+  notify("Server deleted.")
+}
+
+async function quickConnect() {
+  if (savedServers.length === 0) {
+    notify("Add a server first or use a quick connect link.", "warning")
+    return
+  }
+  await connectToServer(0)
+}
+
+async function connectFromLink() {
+  const link = elements.linkInput.value.trim()
+  if (!link) {
+    notify("Paste a connection link first.", "warning")
+    return
+  }
+
+  const parsed = await window.api.parseVlessLink(link)
+  if (!parsed.success) {
+    notify(parsed.error, "danger")
+    return
+  }
+
+  const result = await window.api.connectVPN({
+    ...parsed.config,
+    mode: getValue("connectionMode"),
+    localPort: Number.parseInt(getValue("localPort"), 10),
+    allowLan: getChecked("allowLan"),
+  })
+
+  if (result.success) {
+    updateStatus(result.status)
+    notify("Route active.", "success")
+  } else {
+    notify(result.error, "danger")
+  }
+}
+
+elements.connectBtn.addEventListener("click", quickConnect)
+elements.disconnectBtn.addEventListener("click", async () => {
+  await window.api.disconnectVPN()
+  const status = await window.api.getStatus()
+  updateStatus(status)
+  notify("Disconnected.")
 })
+elements.connectLinkBtn.addEventListener("click", connectFromLink)
 
-document.getElementById("addServerBtn").addEventListener("click", () => {
-  document.getElementById("addServerModal").style.display = "flex"
-})
-
-document.getElementById("cancelAddBtn").addEventListener("click", () => {
-  document.getElementById("addServerModal").style.display = "none"
-})
-
-document.getElementById("addServerForm").addEventListener("submit", async (e) => {
-  e.preventDefault()
-
-  const formData = new FormData(e.target)
+elements.addServerForm.addEventListener("submit", async (event) => {
+  event.preventDefault()
+  const formData = new FormData(elements.addServerForm)
   const server = {
     name: formData.get("name"),
     type: formData.get("type"),
     host: formData.get("host"),
-    port: Number.parseInt(formData.get("port")),
+    port: Number.parseInt(formData.get("port"), 10),
     uuid: formData.get("uuid"),
+    password: formData.get("uuid"),
+    method: formData.get("method"),
+    sni: formData.get("sni"),
+    mode: getValue("connectionMode"),
+    localPort: Number.parseInt(getValue("localPort"), 10),
+    allowLan: getChecked("allowLan"),
   }
 
-  await window.api.saveServer(server)
+  const result = await window.api.saveServer(server)
+  if (result.success) {
+    elements.addServerForm.reset()
+    await loadServers()
+    notify(currentSettings?.saveSecrets ? "Server saved with configured secret policy." : "Server saved without secret material.", "success")
+  } else {
+    notify(result.error || "Could not save server.", "danger")
+  }
+})
+
+elements.settingsForm.addEventListener("submit", async (event) => {
+  event.preventDefault()
+  const result = await window.api.saveSettings(readSettings())
+  if (result.success) {
+    applySettings(result.settings)
+    elements.settingsState.textContent = "Saved"
+    notify("Settings saved.", "success")
+  } else {
+    notify(result.error || "Could not save settings.", "danger")
+  }
+})
+
+async function refreshStatus() {
+  const status = await window.api.getStatus()
+  updateStatus(status)
+}
+
+async function initialize() {
+  await loadSettings()
   await loadServers()
+  await refreshStatus()
+  window.api.onStatusUpdate(updateStatus)
+  setInterval(refreshStatus, 1000)
+  setInterval(() => {
+    if (currentStatus.connected) elements.uptimeValue.textContent = formatDuration(currentStatus.connectedAt)
+  }, 1000)
+}
 
-  document.getElementById("addServerModal").style.display = "none"
-  e.target.reset()
-})
-
-// Event listeners for new buttons
-document.getElementById("settingsBtn").addEventListener("click", showSettings)
-document.getElementById("aboutBtn").addEventListener("click", showAbout)
-document.getElementById("saveSettingsBtn").addEventListener("click", saveSettings)
-document.getElementById("closeSettingsBtn").addEventListener("click", () => {
-  document.getElementById("settingsModal").style.display = "none"
-})
-document.getElementById("closeAboutBtn").addEventListener("click", () => {
-  document.getElementById("aboutModal").style.display = "none"
-})
-
-// Initialize
-updateStatus()
-loadServers()
-setInterval(updateStatus, 5000)
+initialize().catch((error) => notify(error.message, "danger"))

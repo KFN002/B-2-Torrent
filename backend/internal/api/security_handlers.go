@@ -17,7 +17,7 @@ type SecurityConfig struct {
 	IPObfuscationEnabled  bool   `json:"ipObfuscationEnabled"`
 	DataEncryptionEnabled bool   `json:"dataEncryptionEnabled"`
 	TorEnabled            bool   `json:"torEnabled"`
-	VPNType               string `json:"vpnType"`               // "none", "vless", "outline"
+	VPNType               string `json:"vpnType"` // "none", "vless", "outline"
 	VLESSKey              string `json:"vlessKey"`
 	OutlineKey            string `json:"outlineKey"`
 	NoLogsMode            bool   `json:"noLogsMode"`
@@ -33,13 +33,13 @@ type SecurityConfig struct {
 
 // SecurityStatus represents the current security status for monitoring
 type SecurityStatus struct {
-	KillSwitchActive       bool   `json:"killSwitchActive"`
-	DNSProtectionActive    bool   `json:"dnsProtectionActive"`
-	IPObfuscationActive    bool   `json:"ipObfuscationActive"`
-	TrafficObfuscationActive bool `json:"trafficObfuscationActive"`
-	NoLogsMode             bool   `json:"noLogsMode"`
-	LeaksDetected          int    `json:"leaksDetected"`
-	LastCheck              string `json:"lastCheck"`
+	KillSwitchActive         bool   `json:"killSwitchActive"`
+	DNSProtectionActive      bool   `json:"dnsProtectionActive"`
+	IPObfuscationActive      bool   `json:"ipObfuscationActive"`
+	TrafficObfuscationActive bool   `json:"trafficObfuscationActive"`
+	NoLogsMode               bool   `json:"noLogsMode"`
+	LeaksDetected            int    `json:"leaksDetected"`
+	LastCheck                string `json:"lastCheck"`
 }
 
 // GetSecurityStatus returns current security status for monitoring
@@ -61,7 +61,7 @@ func (h *Handlers) GetSecurityStatus(w http.ResponseWriter, r *http.Request) {
 	status := SecurityStatus{
 		KillSwitchActive:         killSwitchEnabled == "true" || killSwitchEnabled == "",
 		DNSProtectionActive:      dnsProtectionEnabled == "true" || dnsProtectionEnabled == "",
-		IPObfuscationActive:      torEnabled || vpnType != "none",
+		IPObfuscationActive:      (ipObfuscationEnabled == "true" || ipObfuscationEnabled == "") && (torEnabled || vpnType != "none"),
 		TrafficObfuscationActive: obfuscateTraffic == "true",
 		NoLogsMode:               noLogsMode == "true",
 		LeaksDetected:            0,
@@ -83,7 +83,7 @@ func (h *Handlers) GetSecurityConfig(w http.ResponseWriter, r *http.Request) {
 	outlineKey, _ := h.db.GetSetting("outline_key")
 	noLogsMode, _ := h.db.GetSetting("no_logs_mode")
 	obfuscateTraffic, _ := h.db.GetSetting("obfuscate_traffic")
-	
+
 	forceEncryption, _ := h.db.GetSetting("force_encryption")
 	encryptionLevel, _ := h.db.GetSetting("encryption_level")
 	if encryptionLevel == "" {
@@ -129,6 +129,13 @@ func (h *Handlers) UpdateSecuritySettings(w http.ResponseWriter, r *http.Request
 		h.writeError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+	if config.VPNType == "" {
+		config.VPNType = "none"
+	}
+	if config.VPNType != "none" && config.VPNType != "vless" && config.VPNType != "outline" {
+		h.writeError(w, http.StatusBadRequest, "Unsupported VPN type")
+		return
+	}
 
 	h.logger.Info("Updating security settings",
 		zap.Bool("killSwitch", config.KillSwitchEnabled),
@@ -159,17 +166,17 @@ func (h *Handlers) UpdateSecuritySettings(w http.ResponseWriter, r *http.Request
 	h.db.SetSetting("ip_obfuscation_enabled", fmt.Sprintf("%t", config.IPObfuscationEnabled))
 	h.db.SetSetting("data_encryption_enabled", fmt.Sprintf("%t", config.DataEncryptionEnabled))
 	h.db.SetSetting("tor_enabled", fmt.Sprintf("%t", config.TorEnabled))
-	
+
 	h.db.SetSetting("vpn_type", config.VPNType)
 	if config.VPNType == "vless" && config.VLESSKey != "" {
 		h.db.SetSetting("vless_key", config.VLESSKey)
-		h.logger.Info("VLESS key saved", zap.String("keyPrefix", config.VLESSKey[:20]+"..."))
+		h.logger.Info("VLESS key saved")
 	}
 	if config.VPNType == "outline" && config.OutlineKey != "" {
 		h.db.SetSetting("outline_key", config.OutlineKey)
-		h.logger.Info("Outline key saved", zap.String("keyPrefix", config.OutlineKey[:10]+"..."))
+		h.logger.Info("Outline key saved")
 	}
-	
+
 	h.db.SetSetting("no_logs_mode", fmt.Sprintf("%t", config.NoLogsMode))
 	h.db.SetSetting("obfuscate_traffic", fmt.Sprintf("%t", config.ObfuscateTraffic))
 
@@ -298,18 +305,22 @@ func (h *Handlers) SecureDeleteFile(w http.ResponseWriter, r *http.Request) {
 	errors := []string{}
 
 	for _, filePath := range request.FilePaths {
-		if err := secureDeleteFile(filePath, request.Passes, h.logger); err != nil {
+		safePath, err := normalizeUserFilePath(filePath)
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("%s: %v", filePath, err))
+			continue
+		}
+
+		if err := secureDeleteFile(safePath, request.Passes, h.logger); err != nil {
 			h.logger.Error("Failed to securely delete file",
-				zap.String("file", filePath),
 				zap.Error(err),
 			)
 			errors = append(errors, fmt.Sprintf("%s: %v", filePath, err))
 		} else {
 			h.logger.Info("File securely deleted",
-				zap.String("file", filePath),
 				zap.Int("passes", request.Passes),
 			)
-			deletedFiles = append(deletedFiles, filePath)
+			deletedFiles = append(deletedFiles, safePath)
 		}
 	}
 

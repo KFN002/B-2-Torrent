@@ -15,7 +15,7 @@ check_service() {
     local url=$2
     local response=$(curl -s -o /dev/null -w "%{http_code}" $url 2>/dev/null)
     
-    if [ "$response" = "200" ] || [ "$response" = "000" ]; then
+    if [ "$response" = "200" ]; then
         echo -e "${GREEN}✓${NC} $name: ${GREEN}UP${NC}"
         return 0
     else
@@ -39,8 +39,8 @@ check_port() {
 
 echo "📊 Service Status:"
 check_service "Frontend" "http://localhost:3000"
-check_service "API Gateway" "http://localhost:8000/health"
-check_service "Nginx" "http://localhost"
+check_service "Backend API" "http://localhost:8080/api/health"
+check_service "Nginx" "http://localhost/nginx-health"
 check_port "PostgreSQL" 5432
 check_port "Redis" 6379
 check_port "RabbitMQ" 5672
@@ -48,7 +48,7 @@ check_port "Tor" 9050
 
 echo ""
 echo "💾 Resource Usage:"
-docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}" | grep b2torrent
+docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}" | grep b2torrent || true
 
 echo ""
 echo "🔒 Security Status:"

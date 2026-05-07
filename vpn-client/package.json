@@ -1,15 +1,16 @@
 {
   "name": "b2-vpn-client",
   "version": "1.0.0",
-  "description": "B2 VPN Client - System-Wide Anonymous VPN with VLESS, Outline & Tor",
+  "description": "B2 VPN Client - local-first VPN and proxy client with safer desktop defaults",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
     "build": "electron-builder --publish never",
-    "build:win": "electron-builder --win --x64",
+    "build:win": "electron-builder --win --x64 --arm64",
     "build:mac": "electron-builder --mac --x64 --arm64",
     "build:linux": "electron-builder --linux --x64",
+    "pack": "electron-builder --dir",
     "portable": "electron-builder --win portable --linux AppImage"
   },
   "build": {
@@ -19,32 +20,30 @@
     "directories": {
       "output": "dist"
     },
-    "files": ["main.js", "preload.js", "renderer.js", "index.html", "styles.css", "icons/**/*", "proxy-server.js"],
+    "files": ["main.js", "preload.js", "renderer.js", "index.html", "styles.css"],
     "asar": true,
     "win": {
       "target": ["nsis", "portable", "zip"],
-      "icon": "icons/icon.ico",
+      "artifactName": "B2-VPN-Client-${version}-${arch}.${ext}",
       "requestedExecutionLevel": "requireAdministrator"
     },
     "mac": {
       "target": ["dmg", "zip"],
-      "icon": "icons/icon.icns",
-      "category": "public.app-category.utilities"
+      "category": "public.app-category.utilities",
+      "hardenedRuntime": true,
+      "artifactName": "B2-VPN-Client-${version}-${arch}.${ext}"
     },
     "linux": {
       "target": ["AppImage", "deb", "rpm"],
-      "icon": "icons/icon.png",
       "category": "Network"
     }
   },
   "dependencies": {
-    "electron-store": "^8.1.0",
-    "socks": "^2.7.1",
-    "http-proxy": "^1.18.1",
-    "node-fetch": "^2.7.0"
+    "electron-store": "^11.0.2",
+    "socks": "^2.8.8"
   },
   "devDependencies": {
-    "electron": "^28.1.0",
-    "electron-builder": "^24.9.1"
+    "electron": "^42.0.0",
+    "electron-builder": "^26.8.1"
   }
 }

@@ -1,20 +1,20 @@
 package api
 
 import (
-	"net/http"
 	"go.uber.org/zap"
+	"net/http"
 )
 
 // SecurityMetrics represents detailed security analytics
 type SecurityMetrics struct {
-	OverallScore      int                `json:"overallScore"`
-	Encryption        EncryptionMetrics  `json:"encryption"`
-	Anonymity         AnonymityMetrics   `json:"anonymity"`
-	LeakProtection    LeakMetrics        `json:"leakProtection"`
-	TrafficObfuscation ObfuscationMetrics `json:"trafficObfuscation"`
-	ActiveThreats     int                `json:"activeThreats"`
-	ProtectedConnections int             `json:"protectedConnections"`
-	BlockedPeers      int                `json:"blockedPeers"`
+	OverallScore         int                `json:"overallScore"`
+	Encryption           EncryptionMetrics  `json:"encryption"`
+	Anonymity            AnonymityMetrics   `json:"anonymity"`
+	LeakProtection       LeakMetrics        `json:"leakProtection"`
+	TrafficObfuscation   ObfuscationMetrics `json:"trafficObfuscation"`
+	ActiveThreats        int                `json:"activeThreats"`
+	ProtectedConnections int                `json:"protectedConnections"`
+	BlockedPeers         int                `json:"blockedPeers"`
 }
 
 type EncryptionMetrics struct {
@@ -50,13 +50,13 @@ func (h *Handlers) GetSecurityMetrics(w http.ResponseWriter, r *http.Request) {
 	if encryptionLevel == "" {
 		encryptionLevel = "strong"
 	}
-	
+
 	torEnabled := h.torrentClient.IsTorEnabled()
 	vpnType, _ := h.db.GetSetting("vpn_type")
 	if vpnType == "" {
 		vpnType = "none"
 	}
-	
+
 	noLogsMode, _ := h.db.GetSetting("no_logs_mode")
 	obfuscateTraffic, _ := h.db.GetSetting("obfuscate_traffic")
 

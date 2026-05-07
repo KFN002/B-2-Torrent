@@ -86,6 +86,9 @@ func StartSecurityMonitoring(db *database.Database, tc *torrent.Client, logger *
 
 		// Check VPN/Tor status
 		vpnType, _ := db.GetSetting("vpn_type")
+		if vpnType == "" {
+			vpnType = "none"
+		}
 		torEnabled := tc.IsTorEnabled()
 
 		if vpnType != "none" && !isVPNConnected(vpnType) {

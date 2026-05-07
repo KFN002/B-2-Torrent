@@ -1,18 +1,16 @@
 const axios = require("axios")
 const cheerio = require("cheerio")
-const Store = require("electron-store")
-
-const store = new Store()
 
 // Custom B2 Search Engine - Aggregates results from multiple sources
 class B2SearchEngine {
-  constructor() {
+  constructor(store) {
+    this.store = store
     this.name = "B2 Search"
     this.settings = this.loadSettings()
   }
 
   loadSettings() {
-    return store.get("searchSettings", {
+    return this.store.get("searchSettings", {
       darkWebAccess: false,
       violentContent: "filter",
       adultContent: "filter",
@@ -24,7 +22,7 @@ class B2SearchEngine {
 
   saveSettings(settings) {
     this.settings = { ...this.settings, ...settings }
-    store.set("searchSettings", this.settings)
+    this.store.set("searchSettings", this.settings)
   }
 
   // Aggregates search results from multiple privacy-focused engines

@@ -17,6 +17,19 @@ type MultiProxyDialer struct {
 	baseDialer proxy.Dialer
 }
 
+type proxyPeerDialer struct {
+	network string
+	dialer  *MultiProxyDialer
+}
+
+func (d proxyPeerDialer) DialerNetwork() string {
+	return d.network
+}
+
+func (d proxyPeerDialer) Dial(ctx context.Context, addr string) (net.Conn, error) {
+	return d.dialer.DialContext(ctx, d.network, addr)
+}
+
 // NewMultiProxyDialer creates a dialer that routes through multiple proxies
 // This provides multi-hop routing through different countries for maximum anonymity
 func NewMultiProxyDialer(proxyAddresses []string) (*MultiProxyDialer, error) {
