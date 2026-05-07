@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>B2 Secure Browser - Stealth Mode</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="browser-container">
+    <!-- Added tab bar for multi-tab support -->
+    <div class="tab-bar" id="tab-bar">
+      <div class="tabs-container" id="tabs-container"></div>
+      <button id="new-tab-btn" class="new-tab-btn" title="New Tab">+</button>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="nav-buttons">
+        <button id="back-btn" class="nav-btn" title="Back">←</button>
+        <button id="forward-btn" class="nav-btn" title="Forward">→</button>
+        <button id="reload-btn" class="nav-btn" title="Reload">⟳</button>
+      </div>
+      
+      <div class="url-bar-container">
+        <div class="security-indicator" id="security-indicator" title="Encrypted Connection">🔒</div>
+        <input type="text" id="url-bar" class="url-bar" placeholder="Enter URL or search with B2 Search..." />
+        <button id="go-btn" class="go-btn">Go</button>
+      </div>
+
+      <div class="toolbar-actions">
+        <button id="proxy-btn" class="action-btn" title="Proxy Settings">🌐</button>
+        <!-- Added search settings button -->
+        <button id="search-settings-btn" class="action-btn" title="Search Settings">🔍</button>
+        <button id="settings-btn" class="action-btn" title="Browser Settings">⚙️</button>
+        <button id="about-btn" class="action-btn" title="About">ℹ️</button>
+        <button id="clear-btn" class="action-btn" title="Clear All Data">🗑️</button>
+      </div>
+    </div>
+
+    <!-- Enhanced status bar with security status indicator -->
+    <div class="status-bar">
+      <div id="security-status" class="security-status">
+        <span class="status-item">🔒 Encrypted</span>
+        <span class="status-item">🚫 No Logs</span>
+        <span class="status-item">👻 Stealth Mode</span>
+        <span class="status-item">🛡️ Anti-Fingerprint</span>
+      </div>
+      <!-- Added real-time block statistics display -->
+      <div id="block-stats" class="block-stats">
+        <span class="status-item">🚫 0 Blocked</span>
+      </div>
+      <span class="status-item" id="proxy-status">No Proxy</span>
+    </div>
+
+    <!-- Main Content -->
+    <div class="content-area">
+      <!-- Removed webview element, tabs now use BrowserViews managed by main process -->
+      <div class="welcome-screen" id="welcome-screen">
+        <div class="welcome-content">
+          <!-- Enhanced welcome screen with stealth branding -->
+          <div class="logo-container">
+            <div class="logo-icon">🛡️</div>
+            <h1 class="welcome-title">B2 Secure Browser</h1>
+          </div>
+          <p class="welcome-subtitle">Ultra-Secure • Zero Logs • Total Anonymity • Anti-Fingerprint</p>
+          
+          <div class="security-badges">
+            <div class="badge">
+              <div class="badge-icon">🚫</div>
+              <div class="badge-text">No History</div>
+            </div>
+            <div class="badge">
+              <div class="badge-icon">🔒</div>
+              <div class="badge-text">No Cookies</div>
+            </div>
+            <div class="badge">
+              <div class="badge-icon">🛡️</div>
+              <div class="badge-text">No Tracking</div>
+            </div>
+            <div class="badge">
+              <div class="badge-icon">👻</div>
+              <div class="badge-text">Stealth Mode</div>
+            </div>
+            <div class="badge">
+              <div class="badge-icon">🎭</div>
+              <div class="badge-text">Anti-Fingerprint</div>
+            </div>
+            <div class="badge">
+              <div class="badge-icon">🔐</div>
+              <div class="badge-text">Encrypted</div>
+            </div>
+            <div class="badge">
+              <div class="badge-icon">🚫</div>
+              <div class="badge-text">Ad Blocker</div>
+            </div>
+            <div class="badge">
+              <div class="badge-icon">🦠</div>
+              <div class="badge-text">Malware Block</div>
+            </div>
+          </div>
+
+          <div class="search-engines">
+            <h3>Privacy-Focused Search Engines</h3>
+            <div class="engine-grid">
+              <!-- Added B2 Search as the first option -->
+              <a href="#" class="engine-card" id="b2-search-card">
+                <div class="engine-icon">🛡️</div>
+                <div class="engine-name">B2 Search (Beta)</div>
+                <div class="engine-desc">Secure & Anonymous</div>
+              </a>
+              <a href="https://duckduckgo.com" class="engine-card">
+                <div class="engine-icon">🦆</div>
+                <div class="engine-name">DuckDuckGo</div>
+                <div class="engine-desc">No tracking</div>
+              </a>
+              <a href="https://www.startpage.com" class="engine-card">
+                <div class="engine-icon">🔍</div>
+                <div class="engine-name">Startpage</div>
+                <div class="engine-desc">Google proxy</div>
+              </a>
+              <a href="https://www.qwant.com" class="engine-card">
+                <div class="engine-icon">🔷</div>
+                <div class="engine-name">Qwant</div>
+                <div class="engine-desc">EU-based</div>
+              </a>
+              <a href="https://searx.be" class="engine-card">
+                <div class="engine-icon">🔐</div>
+                <div class="engine-name">SearX</div>
+                <div class="engine-desc">Metasearch</div>
+              </a>
+              <a href="https://www.mojeek.com" class="engine-card">
+                <div class="engine-icon">🌐</div>
+                <div class="engine-name">Mojeek</div>
+                <div class="engine-desc">Independent</div>
+              </a>
+            </div>
+          </div>
+
+          <div class="info-section">
+            <h4>Protection Features</h4>
+            <ul class="info-list">
+              <li>🚫 <strong>Ad Blocking:</strong> Automatically blocks ads, banners, and sponsored content</li>
+              <li>👁️ <strong>Tracker Blocking:</strong> Prevents analytics, trackers, and telemetry scripts</li>
+              <li>🦠 <strong>Malware Protection:</strong> Blocks known malware, viruses, and cryptominers</li>
+              <li>🔒 <strong>Zero Data Persistence:</strong> All browsing data cleared on exit - no traces</li>
+              <li>🎭 <strong>Anti-Fingerprinting:</strong> Canvas, WebGL, and audio fingerprinting protection</li>
+              <li>🕐 <strong>Timezone Spoofing:</strong> UTC timezone for location privacy</li>
+              <li>🖥️ <strong>Screen Normalization:</strong> Standard resolution to prevent tracking</li>
+              <li>🌐 <strong>Tor/VPN Support:</strong> Configure proxy for complete anonymity</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Added search results display -->
+      <div id="search-results" class="search-results hidden">
+        <div class="search-header">
+          <h2>B2 Search Results</h2>
+          <button id="close-search" class="close-btn">✕</button>
+        </div>
+        <div id="search-results-content"></div>
+      </div>
+    </div>
+
+    <!-- Proxy Settings Modal -->
+    <div class="modal hidden" id="proxy-modal">
+      <div class="modal-content">
+        <h2>🌐 Proxy Configuration</h2>
+        <p class="modal-subtitle">Route all browser traffic through a proxy server for enhanced anonymity</p>
+        
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="proxy-enabled" />
+            <span>Enable Proxy Connection</span>
+          </label>
+        </div>
+
+        <div class="form-group">
+          <label>Proxy Type</label>
+          <select id="proxy-type">
+            <option value="http">HTTP/HTTPS Proxy</option>
+            <option value="socks5">SOCKS5 (Tor Network)</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Host Address</label>
+            <input type="text" id="proxy-host" placeholder="127.0.0.1" value="127.0.0.1" />
+          </div>
+
+          <div class="form-group">
+            <label>Port Number</label>
+            <input type="number" id="proxy-port" placeholder="9050" value="9050" />
+          </div>
+        </div>
+
+        <div class="preset-buttons">
+          <button class="preset-btn" data-type="tor">
+            <span class="preset-icon">🧅</span>
+            <span class="preset-text">Tor Network (9050)</span>
+          </button>
+          <button class="preset-btn" data-type="vpn">
+            <span class="preset-icon">🌐</span>
+            <span class="preset-text">B2 VPN (8080)</span>
+          </button>
+        </div>
+
+        <div class="proxy-info">
+          <strong>Note:</strong> Ensure Tor or your VPN is running before enabling proxy. 
+          For Tor: Install Tor Browser or service. For B2 VPN: Configure in the main B2 Torrent app.
+        </div>
+
+        <div class="modal-actions">
+          <button id="save-proxy-btn" class="primary-btn">Save & Apply</button>
+          <button id="cancel-proxy-btn" class="secondary-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Added Search Settings Modal -->
+    <div class="modal hidden" id="search-settings-modal">
+      <div class="modal-content">
+        <h2>🔍 B2 Search Settings</h2>
+        <p class="modal-subtitle">Configure content filtering and search behavior</p>
+        
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="safe-search" checked />
+            <span>Safe Search (Recommended)</span>
+          </label>
+          <p class="setting-desc">Filter explicit content from search results</p>
+        </div>
+
+        <div class="form-group">
+          <label>Adult Content Filtering</label>
+          <select id="adult-content">
+            <option value="block">Block (Default)</option>
+            <option value="warn">Warn</option>
+            <option value="allow">Allow</option>
+          </select>
+          <p class="setting-desc">Control how adult/explicit content is handled</p>
+        </div>
+
+        <div class="form-group">
+          <label>Violent Content Filtering</label>
+          <select id="violent-content">
+            <option value="filter">Filter (Default)</option>
+            <option value="warn">Warn</option>
+            <option value="allow">Allow</option>
+          </select>
+          <p class="setting-desc">Control how violent/graphic content is handled</p>
+        </div>
+
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="regional-restrictions" />
+            <span>Bypass Regional Restrictions</span>
+          </label>
+          <p class="setting-desc">Show all results regardless of region (uses VPN/Tor if enabled)</p>
+        </div>
+
+        <!-- Added Dark Web Access setting with warning -->
+        <div class="form-group danger-zone">
+          <label class="checkbox-label danger">
+            <input type="checkbox" id="dark-web-access" />
+            <span>⚠️ Enable Dark Web Access (DANGEROUS)</span>
+          </label>
+          <div class="warning-box">
+            <strong>⚠️ EXTREME CAUTION REQUIRED</strong>
+            <p>Enabling dark web access allows searching for .onion sites and hidden services. This feature:</p>
+            <ul>
+              <li>❌ May expose you to illegal content</li>
+              <li>❌ Requires Tor connection for actual access</li>
+              <li>❌ Can be dangerous and is NOT recommended</li>
+              <li>❌ User assumes all responsibility</li>
+            </ul>
+            <p><strong>Dark web access is OFF by default and should remain OFF for your safety.</strong></p>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Maximum Results</label>
+          <input type="number" id="max-results" value="20" min="10" max="100" />
+          <p class="setting-desc">Number of search results to display (10-100)</p>
+        </div>
+
+        <div class="modal-actions">
+          <button id="save-search-settings-btn" class="primary-btn">Save Settings</button>
+          <button id="cancel-search-settings-btn" class="secondary-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Browser Settings Modal -->
+    <div class="modal hidden" id="browserSettingsModal">
+      <div class="modal-content">
+        <h2>⚙️ Browser Settings</h2>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="blockAds" checked />
+            <span>Block Ads</span>
+          </label>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="blockTrackers" checked />
+            <span>Block Trackers</span>
+          </label>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="blockMalware" checked />
+            <span>Block Malware</span>
+          </label>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="blockSocial" checked />
+            <span>Block Social Media Widgets</span>
+          </label>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="blockFingerprinting" checked />
+            <span>Block Fingerprinting</span>
+          </label>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="clearOnExit" checked />
+            <span>Clear All Data on Exit</span>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button onclick="saveBrowserSettings()" class="primary-btn">Save</button>
+          <button onclick="document.getElementById('browserSettingsModal').style.display='none'" class="secondary-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- About Modal -->
+    <div class="modal hidden" id="browserAboutModal"></div>
+
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

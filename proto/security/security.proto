@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package security;
+
+option go_package = "github.com/KFN002/B-2-Torrent/proto/security";
+
+service SecurityService {
+  rpc GetSecurityStatus(SecurityStatusRequest) returns (SecurityStatusResponse);
+  rpc CheckLeaks(LeakCheckRequest) returns (LeakCheckResponse);
+  rpc UpdateSecuritySettings(UpdateSecurityRequest) returns (SecurityResponse);
+}
+
+message SecurityStatusRequest {}
+
+message SecurityStatusResponse {
+  bool kill_switch_active = 1;
+  bool dns_protection_active = 2;
+  bool ip_obfuscation_active = 3;
+  bool data_encryption_active = 4;
+  int32 overall_security_score = 5;
+}
+
+message LeakCheckRequest {}
+
+message LeakCheckResponse {
+  bool ip_leak_detected = 1;
+  bool dns_leak_detected = 2;
+  string message = 3;
+}
+
+message UpdateSecurityRequest {
+  bool kill_switch_enabled = 1;
+  bool dns_protection_enabled = 2;
+  bool ip_obfuscation_enabled = 3;
+  bool data_encryption_enabled = 4;
+}
+
+message SecurityResponse {
+  bool success = 1;
+  string message = 2;
+}

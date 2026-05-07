@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B2 VPN Client - System-Wide Anonymous VPN</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app">
+        <header class="header">
+            <div class="logo">
+                <div class="shield-icon">🛡️</div>
+                <h1>B2 VPN Client</h1>
+            </div>
+            <div class="status-badge" id="statusBadge">Disconnected</div>
+        </header>
+
+        <main class="content">
+            <!-- Connection Status -->
+            <section class="glass-card status-card">
+                <h2>Connection Status</h2>
+                <div class="status-grid">
+                    <div class="status-item">
+                        <span class="label">Status:</span>
+                        <span class="value" id="statusText">Disconnected</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Public IP:</span>
+                        <span class="value" id="publicIP">N/A</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Server:</span>
+                        <span class="value" id="serverInfo">N/A</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Protocol:</span>
+                        <span class="value" id="protocolType">N/A</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Speed ↓:</span>
+                        <span class="value" id="speedDown">0 KB/s</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Speed ↑:</span>
+                        <span class="value" id="speedUp">0 KB/s</span>
+                    </div>
+                </div>
+                
+                <div class="connection-controls">
+                    <button class="btn btn-primary btn-large" id="connectBtn">
+                        <span class="btn-icon">🚀</span>
+                        Quick Connect
+                    </button>
+                    <button class="btn btn-danger btn-large" id="disconnectBtn" style="display: none;">
+                        <span class="btn-icon">⏹️</span>
+                        Disconnect
+                    </button>
+                </div>
+            </section>
+
+            <!-- Quick Connect Links -->
+            <section class="glass-card">
+                <h2>🔗 Quick Connect via Link</h2>
+                <div class="input-group">
+                    <input 
+                        type="text" 
+                        id="linkInput" 
+                        placeholder="vless://uuid@host:port?encryption=none&security=tls..."
+                        class="input-field"
+                    >
+                    <button class="btn btn-secondary" id="connectLinkBtn">Connect</button>
+                </div>
+                <div class="info-text">
+                    Supports: VLESS, VMess, Shadowsocks, Outline access keys
+                </div>
+            </section>
+
+            <!-- Server List -->
+            <section class="glass-card">
+                <div class="section-header">
+                    <h2>📡 Saved Servers</h2>
+                    <button class="btn btn-small btn-secondary" id="addServerBtn">+ Add Server</button>
+                </div>
+                <div id="serverList" class="server-list">
+                    <!-- Populated by JS -->
+                </div>
+            </section>
+
+            <!-- Proxy Settings -->
+            <section class="glass-card">
+                <h2>⚙️ System Proxy Settings</h2>
+                <div class="proxy-info">
+                    <div class="info-item">
+                        <strong>HTTP/HTTPS Proxy:</strong> 127.0.0.1:8888
+                    </div>
+                    <div class="info-item">
+                        <strong>SOCKS5 Proxy:</strong> 127.0.0.1:8889
+                    </div>
+                    <div class="info-text">
+                        These proxies are automatically configured system-wide when connected.
+                        Other devices on your network can use these addresses to route through your VPN.
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Add Server Modal -->
+    <div id="addServerModal" class="modal" style="display: none;">
+        <div class="modal-content glass-card">
+            <h2>Add Server</h2>
+            <form id="addServerForm">
+                <div class="form-group">
+                    <label>Name:</label>
+                    <input type="text" name="name" required class="input-field">
+                </div>
+                <div class="form-group">
+                    <label>Type:</label>
+                    <select name="type" class="input-field">
+                        <option value="vless">VLESS</option>
+                        <option value="vmess">VMess</option>
+                        <option value="shadowsocks">Shadowsocks</option>
+                        <option value="outline">Outline</option>
+                        <option value="tor">Tor</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Host:</label>
+                    <input type="text" name="host" required class="input-field">
+                </div>
+                <div class="form-group">
+                    <label>Port:</label>
+                    <input type="number" name="port" required class="input-field">
+                </div>
+                <div class="form-group">
+                    <label>UUID/Key:</label>
+                    <input type="text" name="uuid" class="input-field">
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">Save</button>
+                    <button type="button" class="btn btn-secondary" id="cancelAddBtn">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>

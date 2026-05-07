@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package torrent;
+
+option go_package = "github.com/KFN002/B-2-Torrent/proto/torrent";
+
+service TorrentService {
+  rpc AddTorrent(AddTorrentRequest) returns (TorrentResponse);
+  rpc GetTorrents(GetTorrentsRequest) returns (TorrentsListResponse);
+  rpc DeleteTorrent(DeleteTorrentRequest) returns (TorrentResponse);
+  rpc PauseTorrent(PauseTorrentRequest) returns (TorrentResponse);
+  rpc ResumeTorrent(ResumeTorrentRequest) returns (TorrentResponse);
+}
+
+message AddTorrentRequest {
+  string magnet_uri = 1;
+}
+
+message GetTorrentsRequest {
+  int32 limit = 1;
+}
+
+message DeleteTorrentRequest {
+  string info_hash = 1;
+}
+
+message PauseTorrentRequest {
+  string info_hash = 1;
+}
+
+message ResumeTorrentRequest {
+  string info_hash = 1;
+}
+
+message Torrent {
+  string info_hash = 1;
+  string name = 2;
+  int64 total_size = 3;
+  int64 downloaded = 4;
+  int64 uploaded = 5;
+  int64 download_rate = 6;
+  int64 upload_rate = 7;
+  double progress = 8;
+  string status = 9;
+}
+
+message TorrentResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message TorrentsListResponse {
+  repeated Torrent torrents = 1;
+  int32 total = 2;
+}

@@ -1,0 +1,63 @@
+{
+  "name": "b2-secure-browser",
+  "version": "1.0.0",
+  "description": "Ultra-Secure Anonymous Browser - No Logs, No History, Full Privacy",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder --publish never",
+    "build:win": "electron-builder --win --x64",
+    "build:mac": "electron-builder --mac --x64 --arm64",
+    "build:linux": "electron-builder --linux --x64",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "portable": "electron-builder --win portable --linux AppImage"
+  },
+  "build": {
+    "appId": "com.b2torrent.securebrowser",
+    "productName": "B2 Secure Browser",
+    "compression": "maximum",
+    "directories": {
+      "output": "dist"
+    },
+    "files": ["main.js", "preload.js", "renderer.js", "search-engine.js", "index.html", "styles.css", "icons/**/*"],
+    "asar": true,
+    "asarUnpack": ["icons/**/*"],
+    "win": {
+      "target": ["nsis", "portable", "zip"],
+      "icon": "icons/icon.ico",
+      "artifactName": "B2-Secure-Browser-${version}-${arch}.${ext}"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "icon": "icons/icon.icns",
+      "category": "public.app-category.utilities",
+      "artifactName": "B2-Secure-Browser-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "target": ["AppImage", "deb", "rpm", "tar.gz"],
+      "icon": "icons/icon.png",
+      "category": "Network",
+      "artifactName": "B2-Secure-Browser-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "B2-Secure-Browser-${version}-portable.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0",
+    "axios": "^1.6.5",
+    "cheerio": "^1.0.0-rc.12"
+  },
+  "devDependencies": {
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1"
+  }
+}

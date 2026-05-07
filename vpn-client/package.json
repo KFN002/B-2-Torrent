@@ -1,0 +1,50 @@
+{
+  "name": "b2-vpn-client",
+  "version": "1.0.0",
+  "description": "B2 VPN Client - System-Wide Anonymous VPN with VLESS, Outline & Tor",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder --publish never",
+    "build:win": "electron-builder --win --x64",
+    "build:mac": "electron-builder --mac --x64 --arm64",
+    "build:linux": "electron-builder --linux --x64",
+    "portable": "electron-builder --win portable --linux AppImage"
+  },
+  "build": {
+    "appId": "com.b2torrent.vpnclient",
+    "productName": "B2 VPN Client",
+    "compression": "maximum",
+    "directories": {
+      "output": "dist"
+    },
+    "files": ["main.js", "preload.js", "renderer.js", "index.html", "styles.css", "icons/**/*", "proxy-server.js"],
+    "asar": true,
+    "win": {
+      "target": ["nsis", "portable", "zip"],
+      "icon": "icons/icon.ico",
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "icon": "icons/icon.icns",
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "target": ["AppImage", "deb", "rpm"],
+      "icon": "icons/icon.png",
+      "category": "Network"
+    }
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0",
+    "socks": "^2.7.1",
+    "http-proxy": "^1.18.1",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1"
+  }
+}
