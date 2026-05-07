@@ -1,87 +1,282 @@
-version: '3.8'
+version: '3.9'
 
 services:
-  # PostgreSQL Database
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: b2torrent-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api-gateway
+      - frontend
+    networks:
+      - torrent-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: b2torrent-redis
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1000
+      --tcp-backlog 511
+      --timeout 300
+      --tcp-keepalive 60
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - torrent-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 384M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    security_opt:
+      - no-new-privileges:true
+
   postgres:
     image: postgres:18-alpine
-    container_name: torrent-db
+    container_name: b2torrent-db
     environment:
       POSTGRES_USER: torrentuser
-      POSTGRES_PASSWORD: torrentpass
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-torrentpass}
       POSTGRES_DB: torrentdb
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "5432:5432"
     networks:
       - torrent-network
     restart: unless-stopped
-
-  # Tor Proxy for anonymous connections
-  tor:
-    image: dperson/torproxy:latest
-    container_name: torrent-tor
-    ports:
-      - "9050:9050"
-      - "9051:9051"
-    networks:
-      - torrent-network
-    restart: unless-stopped
-    environment:
-      - TOR_LOG=notice
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c work_mem=4MB
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
+      -c max_worker_processes=4
+      -c max_parallel_workers_per_gather=2
+      -c max_parallel_workers=4
+      -c max_connections=100
+      -c log_statement=none
+      -c log_duration=off
+      -c logging_collector=off
     healthcheck:
-      test: ["CMD", "curl", "-f", "--socks5", "localhost:9050", "https://check.torproject.org"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD-SHELL", "pg_isready -U torrentuser -d torrentdb"]
+      interval: 10s
+      timeout: 3s
       retries: 3
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    security_opt:
+      - no-new-privileges:true
 
-  # Golang Backend
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: torrent-backend
+  rabbitmq:
+    image: rabbitmq:4.0-management-alpine
+    container_name: b2torrent-rabbitmq
     environment:
-      - DATABASE_URL=postgres://torrentuser:torrentpass@postgres:5432/torrentdb?sslmode=disable
-      - TOR_PROXY=socks5://tor:9050
-      - PORT=8080
-      - GIN_MODE=release
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-admin123}
+      RABBITMQ_VM_MEMORY_HIGH_WATERMARK: 0.6
     ports:
-      - "8080:8080"
+      - "5672:5672"
+      - "15672:15672"
     volumes:
-      - ./downloads:/app/downloads
-      - ./backend:/app/src
-    depends_on:
-      postgres:
-        condition: service_started
-      tor:
-        condition: service_started
+      - rabbitmq_data:/var/lib/rabbitmq
     networks:
       - torrent-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
 
-  # Next.js Frontend
+  tor:
+    image: dperson/torproxy:latest
+    container_name: b2torrent-tor
+    ports:
+      - "9050:9050"
+    networks:
+      - torrent-network
+    restart: unless-stopped
+    environment:
+      TOR_LOG: notice
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 9050 || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    security_opt:
+      - no-new-privileges:true
+
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+      cache_from:
+        - b2torrent-gateway:latest
+    image: b2torrent-gateway:latest
+    container_name: b2torrent-gateway
+    environment:
+      PORT: 8000
+      REDIS_URL: redis:6379
+      AUTH_SERVICE_URL: auth-service:50051
+      TORRENT_SERVICE_URL: torrent-service:50052
+      SECURITY_SERVICE_URL: security-service:50053
+      LOG_LEVEL: warn
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - torrent-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
+
   frontend:
     build:
-      context: ./frontend
+      context: .
       dockerfile: Dockerfile
-    container_name: torrent-frontend
+      cache_from:
+        - b2torrent-frontend:latest
+    image: b2torrent-frontend:latest
+    container_name: b2torrent-frontend
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8080
+      NEXT_PUBLIC_API_URL: http://localhost/api
+      NODE_ENV: production
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      - api-gateway
     networks:
       - torrent-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
 
 volumes:
   postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  rabbitmq_data:
     driver: local
 
 networks:
   torrent-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

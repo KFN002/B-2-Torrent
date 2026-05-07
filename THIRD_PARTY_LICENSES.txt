@@ -1,0 +1,83 @@
+# Third-Party Licenses
+
+B-2-Torrent uses the following open-source components:
+
+## Backend Dependencies
+
+### Go Standard Library
+License: BSD 3-Clause License
+Copyright (c) 2009 The Go Authors
+https://golang.org/LICENSE
+
+### Anacrolix/torrent
+License: MPL 2.0
+https://github.com/anacrolix/torrent
+
+### gorilla/mux
+License: BSD 3-Clause License
+https://github.com/gorilla/mux
+
+### lib/pq (PostgreSQL driver)
+License: MIT License
+https://github.com/lib/pq
+
+### uber-go/zap
+License: MIT License
+Copyright (c) 2016-2017 Uber Technologies, Inc.
+https://github.com/uber-go/zap
+
+### golang.org/x/crypto
+License: BSD 3-Clause License
+https://golang.org/x/crypto
+
+## Frontend Dependencies
+
+### Next.js
+License: MIT License
+Copyright (c) 2024 Vercel, Inc.
+https://github.com/vercel/next.js
+
+### React
+License: MIT License
+Copyright (c) Meta Platforms, Inc. and affiliates
+https://github.com/facebook/react
+
+### Radix UI
+License: MIT License
+Copyright (c) 2022 WorkOS
+https://github.com/radix-ui/primitives
+
+### shadcn/ui
+License: MIT License
+https://ui.shadcn.com
+
+### Lucide Icons
+License: ISC License
+https://lucide.dev
+
+### TailwindCSS
+License: MIT License
+https://tailwindcss.com
+
+### TypeScript
+License: Apache License 2.0
+Copyright (c) Microsoft Corporation
+https://www.typescriptlang.org
+
+### Sonner (Toast notifications)
+License: MIT License
+https://sonner.emilkowal.ski
+
+## Development Dependencies
+
+### ESLint
+License: MIT License
+https://eslint.org
+
+### Prettier
+License: MIT License
+https://prettier.io
+
+---
+
+For complete license texts, please visit the respective project repositories.
