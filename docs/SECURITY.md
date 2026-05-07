@@ -2,7 +2,7 @@
 
 ## Core Privacy Principles
 
-B-2-Torrent is designed with privacy and anonymity as the top priority, with zero-knowledge architecture and military-grade security.
+B-2-Torrent is designed as a privacy-first, self-hosted system for laptops and PCs. It reduces common tracking, persistence, and network-routing risks, but it does not claim absolute anonymity or "military-grade" guarantees.
 
 ### Zero Logging
 - **No HTTP request logging** - Only essential errors logged ephemerally
@@ -35,23 +35,25 @@ B-2-Torrent is designed with privacy and anonymity as the top priority, with zer
 - All torrent traffic routed through Tor SOCKS5 proxy
 - Multi-hop circuit configuration available
 - DHT and PEX disabled for enhanced privacy
-- IPv6 completely disabled to prevent leaks
+- IPv6 controls are available where the OS and runtime support them
 - Connection testing before all operations
 - Circuit rotation for additional anonymity
 
 #### VPN Support
 - **VLESS Protocol**: High-performance encrypted proxy
 - **Outline Protocol**: Secure Shadowsocks-based VPN
-- **System-Wide Proxy**: Route all device traffic through configured proxy
-- **Kill Switch**: Automatic connection termination on VPN/Tor failure
-- **Connection Monitoring**: Real-time status with instant leak detection
+- **System Proxy Mode**: Configures supported desktop proxy settings
+- **TUN Mode**: Routes device traffic through `sing-box` or a custom helper
+- **Kill Switch**: System-proxy blackhole mode on monitored connection failure
+- **Connection Monitoring**: Reachability, latency, transfer, and runtime status
 
-#### Traffic Obfuscation
-- DPI evasion techniques
-- Protocol fingerprint randomization
-- Timing attack mitigation
-- Packet size obfuscation
-- ISP throttling prevention
+#### VPN Client Transport Hardening
+- TLS 1.3 minimum by default for HTTPS/TLS upstreams
+- Plain HTTP proxy upstreams blocked by default
+- VLESS without TLS blocked by default
+- VMess `security=none` blocked by default
+- Strong Shadowsocks allowlist: `2022-blake3-aes-256-gcm`, `2022-blake3-chacha20-poly1305`, `aes-256-gcm`, `chacha20-ietf-poly1305`, `xchacha20-ietf-poly1305`
+- Saved VPN secrets stay in the main process and use OS keychain/keyring encryption when enabled
 
 ### Security Headers
 All HTTP responses include:
@@ -116,11 +118,10 @@ All HTTP responses include:
 
 ### Secure File Deletion
 - **Multiple Pass Overwrite**: 3-35 passes available
-- **DoD 5220.22-M Standard**: 7-pass military standard
-- **Gutmann Method**: 35-pass maximum security
+- **Preset Labels**: Includes 7-pass and 35-pass overwrite presets for compatibility with common terminology
 - **Cryptographic Random Data**: CSPRNG for all overwrites
-- **Sector-Level Writing**: Direct disk writes with sync
-- **Forensically Unrecoverable**: Prevents all data recovery
+- **Synced Writes**: File writes are synced before deletion
+- **Storage Caveat**: SSD wear leveling, snapshots, cloud sync, and journaling filesystems can keep historical copies outside app control
 
 ### Containerization & Isolation
 - Isolated network namespace per service
@@ -168,32 +169,28 @@ All HTTP responses include:
 ## Leak Prevention
 
 ### Real-Time Monitoring
-The application continuously monitors for:
+The application monitors the controls it can observe locally:
 
 #### IP Leak Detection
-- **Real IP Exposure**: Detects actual IP vs VPN IP
-- **WebRTC Leaks**: Browser-based IP exposure
-- **DNS Leaks**: DNS query tracking detection
-- **IPv6 Leaks**: IPv6 completely disabled
-- **Connection Drops**: VPN/Tor disconnection alerts
+- **Connection Drops**: VPN/Tor endpoint reachability failures
+- **Private Destination Blocking**: Blocks private and loopback destinations in the local proxy and generated TUN rules
+- **WebRTC Surface Reduction**: B2 Secure Browser disables or restricts WebRTC-related leakage surfaces
+- **External Leak Tests**: Run independent leak tests when validating a new route or provider
 
 #### DNS Protection
-- **Secure DNS**: DNS-over-HTTPS or DNS-over-Tor
-- **DNS Leak Testing**: Continuous verification
 - **Custom DNS**: Configure trusted DNS servers
-- **DNSSEC**: Validation when available
+- **OS DNS Updates**: Applied where the operating system supports safe automatic changes
+- **TUN DNS Config**: Generated helper config includes the configured DNS servers
 
 #### Network Monitoring
 - **Active Connections**: Real-time connection tracking
-- **Peer Information**: Connected peer analysis
-- **Bandwidth Usage**: Per-torrent and global stats
-- **Port Monitoring**: Port randomization and tracking
+- **Bandwidth Usage**: Global transfer stats in the VPN client
+- **Runtime Specs**: Platform, CPU, memory, Electron, and Node versions for local diagnostics
 
 ### Automatic Responses
-- **Kill Switch Activation**: Instantly stops all traffic on leak
+- **Kill Switch Activation**: Applies the configured system-proxy blackhole where supported
 - **Connection Termination**: Drops unsafe connections
-- **User Alerts**: Immediate toast notifications
-- **Event Logging**: Security events for review
+- **User Alerts**: Immediate in-app notifications
 
 ## Best Practices
 
@@ -314,7 +311,7 @@ rm -rf downloads/* uploads/* temp/*
 
 ### Understanding Privacy Limitations
 
-While B-2-Torrent provides military-grade security, understand:
+B-2-Torrent improves privacy posture, but understand:
 
 1. **ISP Visibility**
    - ISP can see Tor/VPN usage (but not content)

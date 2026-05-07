@@ -332,7 +332,7 @@ document.querySelectorAll(".preset-btn").forEach((btn) => {
     } else if (type === "vpn") {
       proxyType.value = "http"
       proxyHost.value = "127.0.0.1"
-      proxyPort.value = "8080"
+      proxyPort.value = "8888"
     }
   })
 })

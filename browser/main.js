@@ -661,7 +661,7 @@ ipcMain.handle("get-browser-info", () => {
   return {
     name: "B2 Secure Browser",
     version: "1.0.0",
-    description: "Privacy-hardened anonymous browser with ephemeral sessions and local trace reduction",
+    description: "Privacy-focused browser with ephemeral sessions and local trace reduction",
     author: "B2-Torrent Team",
     license: "Personal Use Only",
     features: [

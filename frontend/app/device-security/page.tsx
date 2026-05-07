@@ -206,7 +206,7 @@ export default function DeviceSecurityPage() {
               Secure File Erasure
             </CardTitle>
             <CardDescription className="text-base 2xl:text-lg">
-              Military-grade file shredding with triple random data overwrite (DoD 5220.22-M & Gutmann)
+              Configurable random-data overwrite for app-owned files, with clear SSD and snapshot caveats
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -258,9 +258,9 @@ export default function DeviceSecurityPage() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">
                     {secureDeletePasses === 3 && "Triple Overwrite (Fast)"}
-                    {secureDeletePasses > 3 && secureDeletePasses <= 7 && "DoD 5220.22-M Standard"}
+                    {secureDeletePasses > 3 && secureDeletePasses <= 7 && "7-pass overwrite preset"}
                     {secureDeletePasses > 7 && secureDeletePasses <= 15 && "Enhanced Security"}
-                    {secureDeletePasses > 15 && "Gutmann Method (Maximum)"}
+                    {secureDeletePasses > 15 && "35-pass overwrite preset"}
                   </span>
                   <span className="text-muted-foreground">~{Math.round(secureDeletePasses * 0.5)} sec per MB</span>
                 </div>

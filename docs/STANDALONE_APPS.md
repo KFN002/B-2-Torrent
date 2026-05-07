@@ -5,18 +5,18 @@ This document describes the two standalone desktop applications included in the 
 ## 1. B2 VPN Client
 
 ### Overview
-System-wide VPN client that routes ALL device traffic through encrypted tunnels with military-grade security.
+Local-first VPN/proxy client for laptops and PCs. Proxy mode configures local HTTP/SOCKS proxies for proxy-aware apps; TUN mode can route device traffic through `sing-box` or a custom helper.
 
 ### Features
-- **System-Wide Routing**: All applications on your device use the VPN automatically
-- **Protocol Support**: VLESS, VMess, Shadowsocks, Outline, Tor
-- **Kill-Switch**: Blocks all network traffic if VPN disconnects (prevents IP leaks)
-- **DNS Leak Protection**: Routes DNS queries through encrypted tunnel
-- **IPv6 Blocking**: Prevents IPv6 leaks
+- **Routing Modes**: System proxy mode and helper-backed TUN mode
+- **Protocol Support**: VLESS, VMess, Shadowsocks, Outline-style keys, SOCKS5, HTTPS proxy, Tor SOCKS
+- **Kill-Switch**: System-proxy block mode for supported desktop proxy settings
+- **DNS Controls**: Applies configured DNS servers where the OS supports it
+- **IPv6 Controls**: Privacy identifiers or disable mode where the OS supports it
 - **Auto-Reconnect**: Automatically reconnects if connection drops
-- **Split Tunneling**: Route specific apps through VPN (coming soon)
 - **Network Sharing**: Share VPN connection with other devices on your network
-- **Zero Logs**: No connection logs, no activity logs, no metadata
+- **Secret Safety**: No saved secrets by default; optional OS-keychain-backed saved secrets
+- **Transport Hardening**: Weak Shadowsocks methods and plaintext HTTP upstreams blocked by default
 
 ### Quick Start
 
@@ -36,7 +36,7 @@ npm start
 1. Open B2 VPN Client
 2. Paste your VLESS/VMess link in the "Quick Connect" field
 3. Click "Connect via Link"
-4. All device traffic is now routed through VPN
+4. Proxy-aware traffic routes through the client. Use TUN mode for device-level routing.
 
 #### Manual Server Configuration
 1. Click "Add Server"
@@ -48,17 +48,17 @@ npm start
 ### Settings
 
 #### Kill-Switch
-When enabled, blocks ALL network traffic if VPN disconnects. This prevents your real IP from being exposed.
+When enabled in `system-proxy` mode, points supported desktop proxy settings at a local blackhole if monitoring detects a dropped connection. Kernel-level firewall blocking requires an OS firewall/TUN helper outside the Electron app.
 
-**Recommendation**: Always keep enabled for maximum security.
+**Recommendation**: Keep enabled and use TUN mode or an OS firewall profile when your threat model requires device-level enforcement.
 
-#### DNS Leak Protection
-Routes all DNS queries through the VPN tunnel using secure DNS servers (1.1.1.1).
+#### DNS Controls
+Applies configured DNS servers on supported operating systems. In TUN mode, the generated helper config includes the configured DNS servers.
 
 **Recommendation**: Always keep enabled.
 
-#### IPv6 Blocking
-Disables IPv6 completely to prevent IPv6 leaks.
+#### IPv6 Controls
+Can enable privacy identifiers or disable IPv6 where supported by the operating system.
 
 **Recommendation**: Always keep enabled unless you specifically need IPv6.
 
@@ -78,26 +78,26 @@ Configure other devices to use these proxies to share your VPN connection.
 
 ### Platform Support
 
-- **Windows**: Full support with registry-based proxy configuration
-- **macOS**: Full support with networksetup commands
-- **Linux**: Full support with iptables/gsettings
+- **Windows**: Registry-based desktop proxy configuration; TUN depends on helper privileges
+- **macOS**: `networksetup` desktop proxy configuration; TUN depends on helper privileges
+- **Linux**: GNOME `gsettings` proxy support where available; TUN depends on helper privileges
 
-### Security Guarantees
+### Security Controls
 
-- ✅ Zero logs policy - Nothing is recorded
-- ✅ Kill-switch prevents IP leaks
-- ✅ DNS leak protection
-- ✅ IPv6 leak protection
-- ✅ Encrypted data transmission
-- ✅ No metadata collection
-- ✅ Automatic data clearing on exit
+- No app telemetry or analytics
+- No server secrets saved unless enabled
+- Saved secrets use the OS keychain/keyring through Electron `safeStorage`
+- TLS 1.3 minimum by default for HTTPS/TLS upstreams
+- Strong Shadowsocks allowlist: `2022-blake3-aes-256-gcm`, `2022-blake3-chacha20-poly1305`, `aes-256-gcm`, `chacha20-ietf-poly1305`, `xchacha20-ietf-poly1305`
+- Private/loopback destination blocking
+- Auto reconnect and system-proxy kill switch mode
 
 ---
 
 ## 2. B2 Secure Browser
 
 ### Overview
-Ultra-secure, anonymous web browser with zero logs, complete privacy, and advanced anti-fingerprinting.
+Privacy-focused desktop browser with ephemeral sessions, tracker blocking, proxy support, and anti-fingerprinting mitigations.
 
 ### Features
 - **Zero Logs**: No history, no cache, no cookies, no traces
@@ -111,7 +111,7 @@ Ultra-secure, anonymous web browser with zero logs, complete privacy, and advanc
 - **Hardware Spoofing**: Spoofs CPU cores, memory, and platform
 - **Privacy Search Engines**: Quick access to DuckDuckGo, Startpage, SearX, Brave
 - **Tor/VPN Integration**: Route browser traffic through Tor or VPN
-- **No Plugins**: JavaScript-only for maximum security
+- **No Plugins**: JavaScript-only for a smaller attack surface
 
 ### Quick Start
 
@@ -133,7 +133,7 @@ npm start
 1. Open B2 Secure Browser
 2. Enter URL or search term in address bar
 3. Press Enter or click Go
-4. Browse anonymously with zero traces
+4. Browse with reduced local traces and network-layer privacy from your configured proxy
 
 #### Search Engines
 Click any search engine card on the welcome screen:
@@ -154,7 +154,7 @@ Click any search engine card on the welcome screen:
 
 ### Settings
 
-All settings are enabled by default for maximum security:
+Privacy settings are enabled by default:
 
 - **Block Ads**: Blocks advertising networks and banners
 - **Block Trackers**: Blocks analytics, telemetry, and tracking pixels
@@ -197,18 +197,16 @@ Real-time statistics showing blocked content:
 - **macOS**: Full support
 - **Linux**: Full support
 
-### Security Guarantees
+### Security Controls
 
-- ✅ Zero logs - Nothing is recorded, ever
-- ✅ No history - Browsing history never saved
-- ✅ No cache - All cached data cleared continuously
-- ✅ No cookies - Session-only, cleared on exit
-- ✅ Anti-fingerprinting - Advanced protection against all fingerprinting techniques
-- ✅ Secure headers - HSTS, CSP, X-Frame-Options
-- ✅ WebRTC leak protection
-- ✅ DNS leak protection (when used with VPN)
-- ✅ Automatic data clearing every 30 minutes
-- ✅ Complete data wipe on exit
+- No app telemetry or analytics
+- Ephemeral browser sessions with history/cache/cookies cleared on exit
+- Tracker, ad, malware, social widget, and known fingerprinting-script blocking
+- Canvas, WebGL, audio, timezone, screen, and hardware fingerprinting mitigations
+- WebRTC leak-surface reduction
+- DNS route follows the configured proxy/VPN/TUN path
+- Automatic data clearing every 30 minutes
+- Data clearing on exit
 
 ---
 
@@ -283,12 +281,12 @@ For issues or questions:
 
 ## Security Notice
 
-⚠️ **These applications provide maximum anonymity and security when used correctly.**
+These applications reduce common local tracking, proxy, and routing risks when configured correctly, but no client can guarantee anonymity against every VPN provider, Tor exit, ISP, endpoint compromise, malware, or OS-level leak.
 
 - Always enable Kill-Switch in VPN client
 - Never disable anti-fingerprinting in browser
 - Clear data regularly
-- Use with Tor for maximum anonymity
-- Combine both apps for complete protection
+- Use Tor or a trusted VPN route when your threat model requires network-layer privacy
+- Combine the browser and VPN client for layered protection, then verify the route with independent leak tests
 
 **Remember**: These tools are standalone and self-contained. They do not depend on the main B-2-Torrent application and can be distributed separately.

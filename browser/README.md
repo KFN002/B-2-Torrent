@@ -1,16 +1,16 @@
 # B2 Secure Browser
 
-Ultra-secure, anonymous desktop browser with zero data persistence and advanced anti-fingerprinting protection.
+Privacy-focused desktop browser with ephemeral sessions, proxy support, tracker blocking, and anti-fingerprinting mitigations.
 
 ## Features
 
 - **Zero Logs**: No history, cookies, or cache - completely ephemeral
-- **Complete Anonymity**: Advanced anti-fingerprinting and tracking protection
+- **Reduced Fingerprinting**: Advanced anti-fingerprinting and tracking protection
 - **Stealth Mode**: Canvas, WebGL, and audio fingerprinting randomization
 - **Proxy Support**: Built-in Tor and VPN proxy configuration
 - **Secure by Default**: DuckDuckGo and privacy-focused search engines
 - **Cross-Platform**: Windows, macOS, and Linux support
-- **Lightweight**: Minimal resource usage with maximum security
+- **Lightweight**: Minimal resource usage with security-focused defaults
 - **No Data Persistence**: All data automatically cleared on exit
 - **Tracker Blocking**: Automatic blocking of analytics and tracking scripts
 - **DNS Leak Protection**: Secure DNS configuration
@@ -54,7 +54,7 @@ Built executables will be in the `dist/` directory.
 
 The browser supports routing all traffic through:
 - **Tor Network**: SOCKS5 proxy on 127.0.0.1:9050 (default Tor port)
-- **B2 VPN**: HTTP/HTTPS proxy on 127.0.0.1:8080 (from B-2-Torrent)
+- **B2 VPN**: HTTP/HTTPS proxy on 127.0.0.1:8888 (from the standalone B2 VPN Client)
 - **Custom Proxy**: Any HTTP/HTTPS or SOCKS5 proxy
 
 ### Integration with B-2-Torrent
@@ -131,7 +131,7 @@ browser/
 
 The browser implements defense in depth:
 1. **Electron Security**: Disabled node integration, enabled context isolation
-2. **Session Isolation**: Separate partition for maximum privacy
+2. **Session Isolation**: Separate partition for stronger privacy boundaries
 3. **Content Filtering**: WebRequest API blocks tracking domains
 4. **Header Manipulation**: Removes identifying headers, adds privacy headers
 5. **JavaScript Injection**: Runtime fingerprint randomization

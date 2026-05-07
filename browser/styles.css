@@ -132,7 +132,7 @@ body {
 }
 
 .status-item {
-  color: #888;
+  color: #aab4bf;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -232,7 +232,7 @@ body {
 
 .welcome-subtitle {
   font-size: 18px;
-  color: #888;
+  color: #aab4bf;
   margin-bottom: 40px;
   letter-spacing: 0.5px;
 }
@@ -323,7 +323,7 @@ body {
 
 .engine-desc {
   font-size: 12px;
-  color: #888;
+  color: #aab4bf;
 }
 
 /* Info section with list */
@@ -382,7 +382,7 @@ body {
 }
 
 .feature-text {
-  color: #888;
+  color: #aab4bf;
   font-size: 14px;
 }
 
@@ -419,7 +419,7 @@ body {
 }
 
 .modal-subtitle {
-  color: #888;
+  color: #aab4bf;
   margin-bottom: 24px;
   font-size: 14px;
   line-height: 1.5;
@@ -569,7 +569,7 @@ body {
 
 .secondary-btn:hover {
   background: #333;
-  border-color: #666;
+  border-color: #aab4bf;
 }
 
 /* Responsive design for smaller screens */
@@ -660,7 +660,7 @@ body {
 }
 
 .search-engine {
-  color: #888;
+  color: #aab4bf;
   font-size: 12px;
 }
 
@@ -747,7 +747,7 @@ body {
 .no-results {
   text-align: center;
   padding: 60px 20px;
-  color: #888;
+  color: #aab4bf;
   font-size: 16px;
 }
 
@@ -781,7 +781,7 @@ body {
 }
 
 .blocked-query {
-  color: #888;
+  color: #aab4bf;
   font-style: italic;
   margin-top: 16px;
   margin-bottom: 24px;
@@ -790,7 +790,7 @@ body {
 /* Added search settings modal specific styling */
 .setting-desc {
   font-size: 12px;
-  color: #888;
+  color: #aab4bf;
   margin-top: 4px;
   line-height: 1.4;
 }
@@ -875,7 +875,7 @@ body {
 }
 
 .about-content .version {
-  color: #888;
+  color: #aab4bf;
   font-size: 14px;
   margin-bottom: 16px;
 }
@@ -918,7 +918,7 @@ body {
 
 .about-content .author,
 .about-content .license {
-  color: #888;
+  color: #aab4bf;
   font-size: 14px;
   margin-bottom: 8px;
 }
@@ -1035,7 +1035,7 @@ body {
   padding: 2px 6px;
   background: transparent;
   border: none;
-  color: #666;
+  color: #aab4bf;
   cursor: pointer;
   font-size: 14px;
   border-radius: 4px;

@@ -1,16 +1,16 @@
-# B2 VPN Client - System-Wide Anonymous VPN
+# B2 VPN Client - Local VPN/Proxy Client
 
 ## Overview
 
-B2 VPN Client is a standalone desktop application that provides system-wide anonymous VPN connectivity supporting multiple protocols including VLESS, VMess, Shadowsocks, Outline, and Tor network integration.
+B2 VPN Client is a standalone desktop application for laptops and PCs. It provides a local HTTP/SOCKS proxy mode for proxy-aware apps and a TUN mode through `sing-box` or a custom helper for device-level routing. It supports VLESS, VMess, Shadowsocks, Outline-style Shadowsocks keys, SOCKS5, HTTPS proxy, and Tor SOCKS integration.
 
 ## Key Features
 
-### 🌐 System-Wide Proxy
-- Routes **all device traffic** through VPN automatically
-- Creates local HTTP/HTTPS proxy (port 8888)
-- Creates local SOCKS5 proxy (port 8889)
-- Other devices on your network can use your PC as proxy server
+### 🌐 Routing Modes
+- Proxy mode creates a local HTTP/HTTPS proxy on port `8888`
+- Proxy mode creates a local SOCKS5 proxy on port `8889`
+- TUN mode routes device traffic through `sing-box` or a configured helper
+- Other devices on your network can use your PC as a proxy server when LAN access is enabled
 
 ### 🔐 Protocol Support
 - **VLESS** - Modern, efficient protocol
@@ -27,9 +27,10 @@ B2 VPN Client is a standalone desktop application that provides system-wide anon
 
 ### 📊 Real-Time Monitoring
 - Connection status
-- Public IP address
+- Route mode and active endpoint
 - Speed monitoring
 - Data transfer statistics
+- Runtime specs including platform, CPU, memory, Electron, and Node versions
 
 ## Installation
 
@@ -86,14 +87,11 @@ Add servers manually with these details:
 - **Port**: Server port
 - **UUID/Key**: Authentication credentials
 
-### 3. System-Wide Routing
+### 3. Routing
 
-Once connected, **ALL** applications on your device will automatically route through the VPN:
-- Web browsers
-- Email clients
-- Desktop apps
-- Command-line tools
-- Games
+Proxy mode applies the operating system proxy settings and works for applications that honor the system proxy or are configured to use `127.0.0.1:8888` / `127.0.0.1:8889`.
+
+TUN mode uses `sing-box` or a custom local helper to route device traffic at the network-interface level. TUN mode may require administrator privileges and the helper must be installed separately.
 
 ### 4. Share Connection with Other Devices
 
@@ -111,28 +109,32 @@ Other devices on your network can use your PC as a proxy:
 ## Platform-Specific Notes
 
 ### Windows
-- Requires administrator privileges for system proxy
+- May require elevated privileges for system proxy or TUN helper changes
 - Automatically configures Windows Internet Settings
-- Works with all Windows applications
+- Proxy mode works with proxy-aware Windows applications
 
 ### macOS
-- Requires sudo password for networksetup
+- May require administrator permission for `networksetup` or TUN helper changes
 - Configures network services automatically
-- Works with all macOS applications
+- Proxy mode works with proxy-aware macOS applications
 
 ### Linux
-- Requires sudo for gsettings (GNOME)
-- Sets environment variables
-- Works with most desktop environments
+- Uses `gsettings` where available for GNOME proxy configuration
+- Sets process proxy environment variables
+- TUN mode depends on the selected helper and local privileges
 
 ## Security Features
 
-- ✅ Zero logs policy
-- ✅ Encrypted connections
-- ✅ DNS leak protection
-- ✅ Kill switch (optional)
-- ✅ IP address masking
-- ✅ Secure credential storage
+- No app telemetry or analytics
+- No saved server secrets unless explicitly enabled
+- Saved secrets use Electron `safeStorage` / the OS keychain or keyring when available
+- Strong Shadowsocks defaults: `2022-blake3-aes-256-gcm`
+- Weak Shadowsocks methods and plaintext HTTP upstreams are blocked by default
+- TLS 1.3 minimum by default for HTTPS/TLS upstreams, with explicit TLS 1.2 fallback setting
+- DNS server controls where the OS supports automatic updates
+- IPv6 privacy/off controls where the OS supports automatic updates
+- Private and loopback destination blocking in the local proxy and TUN helper config
+- System-proxy kill switch option for supported desktop proxy settings
 
 ## Troubleshooting
 
@@ -176,7 +178,7 @@ The VPN client integrates seamlessly with B-2-Torrent:
 1. Start B2 VPN Client
 2. Connect to your VPN/Tor
 3. Launch B-2-Torrent web app
-4. All torrent traffic automatically routes through VPN
+4. Proxy-aware traffic routes through the client; use TUN mode when you need device-level routing
 
 ## Support
 

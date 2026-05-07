@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, session } = require("electron")
+const { app, BrowserWindow, ipcMain, Menu, Tray, session, safeStorage } = require("electron")
 const path = require("path")
 const fs = require("fs")
 const os = require("os")
@@ -13,6 +13,35 @@ const SUPPORTED_TYPES = new Set(["vless", "vmess", "shadowsocks", "outline", "to
 const PROXY_MODE_TYPES = new Set(["tor", "socks5", "http", "https"])
 const ENCRYPTED_ENGINE_TYPES = new Set(["vless", "vmess", "shadowsocks", "outline"])
 const PRIVATE_HOSTS = new Set(["localhost", "localhost.localdomain", "0.0.0.0"])
+const SECRET_FIELDS_BY_TYPE = {
+  vless: ["uuid"],
+  vmess: ["uuid"],
+  shadowsocks: ["password", "uuid", "method"],
+  outline: ["password", "uuid", "method"],
+  socks5: ["username", "password"],
+  http: ["username", "password"],
+  https: ["username", "password"],
+  tor: ["username", "password"],
+}
+const SECRET_PARAM_KEYS = new Set(["password", "pass", "key", "secret", "token", "uuid", "id"])
+const STRONG_SHADOWSOCKS_METHODS = new Set(["2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305", "aes-256-gcm", "chacha20-ietf-poly1305", "xchacha20-ietf-poly1305"])
+const TLS_MIN_VERSIONS = new Set(["TLSv1.2", "TLSv1.3"])
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const MAX_CLI_CONFIG_BYTES = 128 * 1024
+
+for (const [name, value] of [
+  ["disable-background-networking"],
+  ["disable-breakpad"],
+  ["disable-component-update"],
+  ["disable-crash-reporter"],
+  ["disable-domain-reliability"],
+  ["disable-logging"],
+  ["disable-sync"],
+  ["log-level", "3"],
+]) {
+  if (value === undefined) app.commandLine.appendSwitch(name)
+  else app.commandLine.appendSwitch(name, value)
+}
 
 const DEFAULT_SETTINGS = {
   connectionMode: "proxy",
@@ -28,6 +57,8 @@ const DEFAULT_SETTINGS = {
   healthCheckInterval: 10,
   connectTimeout: 5,
   blockPrivateDestinations: true,
+  allowInsecureTransport: false,
+  tlsMinVersion: "TLSv1.3",
   saveSecrets: false,
   minimizeLogs: true,
   tun: {
@@ -151,6 +182,10 @@ function normalizeMode(value) {
   return value === "tun" ? "tun" : "proxy"
 }
 
+function normalizeTlsMinVersion(value) {
+  return TLS_MIN_VERSIONS.has(value) ? value : DEFAULT_SETTINGS.tlsMinVersion
+}
+
 function normalizeSettings(input = {}) {
   const merged = deepMerge(DEFAULT_SETTINGS, input)
   const localPort = normalizePort(merged.localPort, DEFAULT_SETTINGS.localPort)
@@ -171,6 +206,8 @@ function normalizeSettings(input = {}) {
     healthCheckInterval: Math.min(Math.max(Number.parseInt(merged.healthCheckInterval, 10) || 10, 3), 120),
     connectTimeout: Math.min(Math.max(Number.parseInt(merged.connectTimeout, 10) || 5, 2), 60),
     blockPrivateDestinations: merged.blockPrivateDestinations !== false,
+    allowInsecureTransport: merged.allowInsecureTransport === true,
+    tlsMinVersion: normalizeTlsMinVersion(merged.tlsMinVersion),
     saveSecrets: merged.saveSecrets === true,
     minimizeLogs: merged.minimizeLogs !== false,
     tun: {
@@ -209,7 +246,7 @@ function normalizeConfig(config = {}) {
     throw new Error("Local port must leave room for SOCKS on the next port")
   }
 
-  return {
+  const normalized = {
     name: sanitizeToken(config.name || `${type.toUpperCase()} ${host}`),
     mode,
     type,
@@ -220,23 +257,121 @@ function normalizeConfig(config = {}) {
     uuid: sanitizeToken(config.uuid),
     username: sanitizeToken(config.username),
     password: sanitizeToken(config.password),
-    method: sanitizeToken(config.method || "2022-blake3-aes-128-gcm"),
+    method: sanitizeToken(config.method || "2022-blake3-aes-256-gcm"),
     sni: sanitizeToken(config.sni || config.params?.sni || config.params?.peer || host),
     tls: config.tls !== false && (config.tls === true || config.params?.security === "tls" || type === "vless"),
     params: config.params && typeof config.params === "object" ? config.params : {},
   }
+
+  if ((type === "vless" || type === "vmess") && normalized.uuid && !UUID_PATTERN.test(normalized.uuid)) {
+    throw new Error(`${type.toUpperCase()} requires a valid UUID`)
+  }
+  if (type === "vless" && !normalized.tls && !settings.allowInsecureTransport) {
+    throw new Error("VLESS without TLS is blocked. Enable insecure transports only for controlled testing.")
+  }
+  if (type === "vmess" && String(normalized.params.security || "auto").toLowerCase() === "none" && !settings.allowInsecureTransport) {
+    throw new Error("VMess security=none is blocked. Enable insecure transports only for controlled testing.")
+  }
+  if (type === "http" && !settings.allowInsecureTransport) {
+    throw new Error("Plain HTTP proxy upstreams are blocked by default. Use HTTPS/SOCKS5/Tor or enable insecure transports for testing.")
+  }
+  if ((type === "shadowsocks" || type === "outline") && normalized.method && !STRONG_SHADOWSOCKS_METHODS.has(normalized.method.toLowerCase())) {
+    throw new Error(`Weak Shadowsocks method blocked. Use one of: ${Array.from(STRONG_SHADOWSOCKS_METHODS).join(", ")}`)
+  }
+
+  return normalized
+}
+
+function sanitizeParamsForStorage(params = {}) {
+  if (!params || typeof params !== "object") return {}
+  return Object.fromEntries(
+    Object.entries(params)
+      .filter(([key]) => !SECRET_PARAM_KEYS.has(String(key).toLowerCase()))
+      .map(([key, value]) => [sanitizeToken(key).slice(0, 80), typeof value === "string" ? sanitizeToken(value).slice(0, 512) : value]),
+  )
+}
+
+function ensureSecretStorageAvailable() {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("OS secret storage is not available. Disable secret saving or unlock the OS keychain/keyring.")
+  }
+}
+
+function encryptSecret(value) {
+  ensureSecretStorageAvailable()
+  return safeStorage.encryptString(value).toString("base64")
+}
+
+function decryptSecret(value) {
+  ensureSecretStorageAvailable()
+  return safeStorage.decryptString(Buffer.from(String(value), "base64"))
+}
+
+function hasInlineSecret(server) {
+  const fields = SECRET_FIELDS_BY_TYPE[server?.type] || []
+  return fields.some((field) => Boolean(server?.[field]))
+}
+
+function publicServerView(server) {
+  const view = { ...server, params: sanitizeParamsForStorage(server.params) }
+  for (const field of SECRET_FIELDS_BY_TYPE[server?.type] || []) {
+    delete view[field]
+  }
+  delete view.secrets
+  view.secretStorage = server?.secretStorage || (server?.secrets ? "os" : hasInlineSecret(server) ? "legacy" : null)
+  view.secretStored = Boolean(view.secretStorage)
+  view.secretRedacted = server?.secretRedacted === true || (!view.secretStored && hasInlineSecret(server))
+  return view
+}
+
+function hydrateStoredServer(server) {
+  if (!server || typeof server !== "object") throw new Error("Saved server is invalid")
+  const hydrated = { ...server, params: sanitizeParamsForStorage(server.params) }
+  for (const [field, encrypted] of Object.entries(server.secrets || {})) {
+    if ((SECRET_FIELDS_BY_TYPE[server.type] || []).includes(field)) {
+      hydrated[field] = decryptSecret(encrypted)
+    }
+  }
+  delete hydrated.secrets
+  delete hydrated.secretStored
+  delete hydrated.secretStorage
+  delete hydrated.secretRedacted
+  return hydrated
+}
+
+function getStoredConnection(key) {
+  const storedConnection = store.get(key)
+  if (!storedConnection) return null
+  return hydrateStoredServer(storedConnection)
 }
 
 function prepareServerForStorage(server) {
-  if (settings.saveSecrets) return server
+  const stored = { ...server, params: sanitizeParamsForStorage(server.params) }
+  const secretFields = SECRET_FIELDS_BY_TYPE[server.type] || []
+  const secrets = {}
 
-  const redacted = { ...server }
-  delete redacted.uuid
-  delete redacted.username
-  delete redacted.password
-  delete redacted.method
-  redacted.secretRedacted = true
-  return redacted
+  for (const field of secretFields) {
+    const value = sanitizeToken(stored[field])
+    delete stored[field]
+    if (!value) continue
+    if (!settings.saveSecrets) {
+      stored.secretRedacted = true
+      continue
+    }
+    secrets[field] = encryptSecret(value)
+  }
+
+  if (Object.keys(secrets).length > 0) {
+    stored.secrets = secrets
+    stored.secretStored = true
+    stored.secretStorage = "os"
+  }
+
+  if (!settings.saveSecrets && stored.secretRedacted !== true) {
+    stored.secretRedacted = false
+  }
+
+  return stored
 }
 
 function checkServerReachable(config) {
@@ -288,6 +423,11 @@ function createWindow() {
       webSecurity: true,
       allowRunningInsecureContent: false,
       enableRemoteModule: false,
+      webviewTag: false,
+      devTools: process.env.NODE_ENV === "development",
+      navigateOnDragDrop: false,
+      safeDialogs: true,
+      v8CacheOptions: "none",
       spellcheck: false,
     },
   })
@@ -339,7 +479,7 @@ function createTray() {
             if (connectionStatus.connected) {
               disconnect({ manual: true })
             } else {
-              const lastConfig = store.get("lastConnection")
+              const lastConfig = getStoredConnection("lastConnection")
               if (lastConfig) connectToVPN(lastConfig)
             }
           },
@@ -448,7 +588,13 @@ function openTunnelViaHttpProxy(config, destination) {
 
   return new Promise((resolve, reject) => {
     const connect = config.type === "https" ? tls.connect : net.connect
-    const upstream = connect({ host: config.host, port: config.port, timeout: settings.connectTimeout * 1000, servername: config.sni || config.host })
+    const connectionOptions = { host: config.host, port: config.port, timeout: settings.connectTimeout * 1000 }
+    if (config.type === "https") {
+      connectionOptions.servername = config.sni || config.host
+      connectionOptions.minVersion = settings.tlsMinVersion
+      connectionOptions.rejectUnauthorized = true
+    }
+    const upstream = connect(connectionOptions)
     let settled = false
     let buffered = Buffer.alloc(0)
 
@@ -735,7 +881,7 @@ function buildSingBoxOutbound(config) {
     return { ...base, type: "socks", version: "5" }
   }
   if (config.type === "http" || config.type === "https") {
-    return { ...base, type: "http", tls: { enabled: config.type === "https", server_name: config.sni || config.host } }
+    return { ...base, type: "http", tls: { enabled: config.type === "https", server_name: config.sni || config.host, min_version: settings.tlsMinVersion } }
   }
   if (config.type === "vless") {
     if (!config.uuid) throw new Error("VLESS TUN mode requires a UUID")
@@ -743,7 +889,7 @@ function buildSingBoxOutbound(config) {
       ...base,
       type: "vless",
       uuid: config.uuid,
-      tls: { enabled: config.tls, server_name: config.sni || config.host },
+      tls: { enabled: config.tls, server_name: config.sni || config.host, min_version: settings.tlsMinVersion },
     }
   }
   if (config.type === "vmess") {
@@ -755,12 +901,22 @@ function buildSingBoxOutbound(config) {
     return {
       ...base,
       type: "shadowsocks",
-      method: config.method || "2022-blake3-aes-128-gcm",
+      method: config.method || "2022-blake3-aes-256-gcm",
       password: config.password || config.uuid,
     }
   }
 
   throw new Error(`No TUN outbound builder for ${config.type}`)
+}
+
+function buildPrivateBlockRules() {
+  if (!settings.blockPrivateDestinations) return []
+  return [
+    {
+      ip_cidr: ["0.0.0.0/8", "10.0.0.0/8", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "::1/128", "fc00::/7", "fe80::/10"],
+      outbound: "block",
+    },
+  ]
 }
 
 function buildSingBoxConfig(config) {
@@ -785,6 +941,7 @@ function buildSingBoxConfig(config) {
     outbounds: [buildSingBoxOutbound(config), { type: "block", tag: "block" }, { type: "direct", tag: "direct" }],
     route: {
       auto_detect_interface: true,
+      rules: buildPrivateBlockRules(),
       final: "secure-out",
     },
   }
@@ -897,6 +1054,10 @@ function stopTunMode() {
     tunProcess.kill("SIGTERM")
     tunProcess = null
   }
+  if (tunConfigPath) {
+    fs.rm(tunConfigPath, { force: true }, () => {})
+    tunConfigPath = null
+  }
 }
 
 async function connectToVPN(inputConfig) {
@@ -948,10 +1109,11 @@ async function connectToVPN(inputConfig) {
     connectionStatus.killSwitchActive = false
     connectionStatus.reconnectAttempts = 0
 
-    if (settings.saveSecrets) {
-      store.set("lastConnection", normalized)
-    } else {
+    try {
+      store.set("lastConnection", prepareServerForStorage(normalized))
+    } catch (error) {
       store.delete("lastConnection")
+      connectionStatus.lastError = `Route is active, but last-connection secrets were not saved: ${error.message}`
     }
 
     if (settings.autoReconnect) startConnectionMonitor()
@@ -1071,6 +1233,52 @@ function parseConnectionLink(link) {
   throw new Error("Unsupported connection link")
 }
 
+function getCliValue(name) {
+  const prefix = `--${name}=`
+  for (let index = 0; index < process.argv.length; index += 1) {
+    const arg = process.argv[index]
+    if (arg.startsWith(prefix)) return arg.slice(prefix.length)
+    if (arg === `--${name}` && process.argv[index + 1] && !process.argv[index + 1].startsWith("--")) {
+      return process.argv[index + 1]
+    }
+  }
+  return null
+}
+
+function hasCliFlag(name) {
+  return process.argv.includes(`--${name}`) || getCliValue(name) === "true"
+}
+
+function readCliConfig() {
+  const configPath = getCliValue("config")
+  if (!configPath) return null
+
+  const resolvedPath = path.resolve(process.cwd(), sanitizeToken(configPath))
+  const stats = fs.statSync(resolvedPath)
+  if (!stats.isFile()) throw new Error("--config must point to a JSON file")
+  if (stats.size > MAX_CLI_CONFIG_BYTES) throw new Error("--config file is too large")
+
+  return JSON.parse(fs.readFileSync(resolvedPath, "utf8"))
+}
+
+async function runStartupCommands() {
+  try {
+    const cliConfig = readCliConfig()
+    if (cliConfig) {
+      await connectToVPN(cliConfig)
+      return
+    }
+
+    if (hasCliFlag("connect-last")) {
+      const lastConfig = getStoredConnection("lastConnection")
+      if (lastConfig) await connectToVPN(lastConfig)
+    }
+  } catch (error) {
+    connectionStatus.lastError = error.message
+    publishStatus()
+  }
+}
+
 function getRuntimeSpecs() {
   const memory = process.memoryUsage()
   const cpus = os.cpus()
@@ -1102,7 +1310,10 @@ function getStatusPayload() {
       ipv6Mode: settings.ipv6Mode,
       autoReconnect: settings.autoReconnect,
       blockPrivateDestinations: settings.blockPrivateDestinations,
+      allowInsecureTransport: settings.allowInsecureTransport,
+      tlsMinVersion: settings.tlsMinVersion,
       saveSecrets: settings.saveSecrets,
+      secretStorageAvailable: safeStorage.isEncryptionAvailable(),
     },
     speed: { down: transferStats.speedDown, up: transferStats.speedUp },
     bytesTransferred: { down: transferStats.down, up: transferStats.up },
@@ -1124,7 +1335,25 @@ ipcMain.handle("parse-vless-link", (_event, link) => {
     return { success: false, error: error.message }
   }
 })
-ipcMain.handle("get-servers", () => store.get("servers", []))
+ipcMain.handle("get-servers", () => store.get("servers", []).map(publicServerView))
+ipcMain.handle("connect-saved-server", async (_event, index, overrides = {}) => {
+  try {
+    const servers = store.get("servers", [])
+    const safeIndex = Number.parseInt(index, 10)
+    if (!Number.isInteger(safeIndex) || safeIndex < 0 || safeIndex >= servers.length) {
+      throw new Error("Saved server not found")
+    }
+    const storedServer = hydrateStoredServer(servers[safeIndex])
+    const normalizedOverrides = {
+      mode: normalizeMode(overrides.mode || settings.connectionMode),
+      localPort: normalizePort(overrides.localPort || settings.localPort, settings.localPort),
+      allowLan: overrides.allowLan === true,
+    }
+    return connectToVPN({ ...storedServer, ...normalizedOverrides })
+  } catch (error) {
+    return { success: false, error: error.message }
+  }
+})
 ipcMain.handle("save-server", (_event, server) => {
   try {
     const normalized = normalizeConfig(server)
@@ -1167,6 +1396,9 @@ ipcMain.handle("get-app-info", () => ({
     "System-proxy kill switch option",
     "DNS and IPv6 privacy controls",
     "Private destination blocking",
+    "Strong transport defaults with weak cipher and plaintext upstream blocking",
+    "OS keychain-backed saved secrets when enabled",
+    "Command-line --config and --connect-last support",
     "Live transfer, latency, and runtime specs",
     "No saved secrets unless enabled",
   ],
@@ -1185,9 +1417,20 @@ app.on("ready", async () => {
   session.defaultSession.setDevicePermissionHandler(() => false)
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false))
   session.defaultSession.setPermissionCheckHandler(() => false)
+  session.defaultSession.clearCache().catch(() => {})
+  session.defaultSession.clearStorageData({ storages: ["cookies", "filesystem", "indexdb", "localstorage", "shadercache", "websql", "serviceworkers", "cachestorage"] }).catch(() => {})
+  session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+    try {
+      const protocol = new URL(details.url).protocol
+      callback({ cancel: !["file:", "data:", "devtools:"].includes(protocol) })
+    } catch {
+      callback({ cancel: true })
+    }
+  })
 
   createWindow()
   createTray()
+  setTimeout(runStartupCommands, 300)
 })
 
 app.on("window-all-closed", () => {})

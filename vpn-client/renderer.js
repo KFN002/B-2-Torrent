@@ -151,6 +151,8 @@ function applySettings(settings) {
   setValue("maxReconnectAttempts", settings.maxReconnectAttempts)
   setValue("healthCheckInterval", settings.healthCheckInterval)
   setValue("connectTimeout", settings.connectTimeout)
+  setChecked("allowInsecureTransport", settings.allowInsecureTransport)
+  setValue("tlsMinVersion", settings.tlsMinVersion)
   setChecked("saveSecrets", settings.saveSecrets)
   setChecked("minimizeLogs", settings.minimizeLogs)
   setValue("tunHelper", settings.tun?.helper)
@@ -182,6 +184,8 @@ function readSettings() {
     maxReconnectAttempts: Number.parseInt(getValue("maxReconnectAttempts"), 10),
     healthCheckInterval: Number.parseInt(getValue("healthCheckInterval"), 10),
     connectTimeout: Number.parseInt(getValue("connectTimeout"), 10),
+    allowInsecureTransport: getChecked("allowInsecureTransport"),
+    tlsMinVersion: getValue("tlsMinVersion"),
     saveSecrets: getChecked("saveSecrets"),
     minimizeLogs: getChecked("minimizeLogs"),
     tun: {
@@ -205,7 +209,7 @@ async function loadSettings() {
 
 function serverSummary(server) {
   const mode = currentSettings?.connectionMode || server.mode || "proxy"
-  const secret = server.secretRedacted ? "secret not saved" : server.uuid || server.password ? "secret saved" : "no secret"
+  const secret = server.secretStorage === "os" ? "secret in OS keychain" : server.secretStored ? "legacy secret saved" : server.secretRedacted ? "secret not saved" : "no secret"
   return `${String(server.type).toUpperCase()} / ${mode.toUpperCase()} / ${server.host}:${server.port} / ${secret}`
 }
 
@@ -250,8 +254,7 @@ async function connectToServer(index) {
   if (!server) return
 
   notify("Starting route...")
-  const result = await window.api.connectVPN({
-    ...server,
+  const result = await window.api.connectSavedServer(index, {
     mode: getValue("connectionMode"),
     localPort: Number.parseInt(getValue("localPort"), 10),
     allowLan: getChecked("allowLan"),
