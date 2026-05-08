@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Progress } from "@/components/ui/progress"
@@ -23,9 +24,18 @@ import {
   Fingerprint,
   Eye,
   EyeOff,
-  Upload,
   FolderOpen,
 } from "lucide-react"
+
+interface SecureDeleteResult {
+  path: string
+  name: string
+  size: number
+  deleted: boolean
+  error?: string
+}
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api"
 
 export default function DeviceSecurityPage() {
   const { toast } = useToast()
@@ -34,6 +44,9 @@ export default function DeviceSecurityPage() {
   const [wipeProgress, setWipeProgress] = useState(0)
   const [currentPass, setCurrentPass] = useState(0)
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
+  const [filePathInput, setFilePathInput] = useState("")
+  const [deleteConfirm, setDeleteConfirm] = useState("")
+  const [secureDeleteErrors, setSecureDeleteErrors] = useState<string[]>([])
   const [systemSecurity, setSystemSecurity] = useState({
     firewall: true,
     antiMalware: true,
@@ -41,51 +54,134 @@ export default function DeviceSecurityPage() {
     encryptedDisk: false,
   })
 
-  const handleSecureDelete = async () => {
-    if (selectedFiles.length === 0) {
+  const getRequestedFilePaths = () =>
+    filePathInput
+      .split("\n")
+      .map((path) => path.trim())
+      .filter(Boolean)
+
+  const formatBytes = (value: number) => {
+    if (value === 0) return "0 B"
+    const units = ["B", "KB", "MB", "GB", "TB"]
+    const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1)
+    return `${(value / 1024 ** index).toFixed(index === 0 ? 0 : 2)} ${units[index]}`
+  }
+
+  const handleValidateSecureDelete = async () => {
+    const filePaths = getRequestedFilePaths()
+    if (filePaths.length === 0) {
       toast({
-        title: "No Files Selected",
-        description: "Please select files to securely delete",
+        title: "No Paths Entered",
+        description: "Enter app-owned file paths under the configured download, upload, or temp directories.",
         variant: "destructive",
       })
       return
     }
 
     setIsWiping(true)
-    setWipeProgress(0)
+    setWipeProgress(20)
     setCurrentPass(0)
+    setSecureDeleteErrors([])
 
-    // Simulate secure deletion with multiple passes
-    for (let pass = 1; pass <= secureDeletePasses; pass++) {
-      setCurrentPass(pass)
+    try {
+      const response = await fetch(`${API_URL}/security/secure-delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filePaths, passes: secureDeletePasses, dryRun: true }),
+      })
 
-      // Each pass takes time to simulate overwriting
-      for (let progress = 0; progress <= 100; progress += 2) {
-        await new Promise((resolve) => setTimeout(resolve, 30))
-        const totalProgress = ((pass - 1) * 100 + progress) / secureDeletePasses
-        setWipeProgress(totalProgress)
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to validate files")
       }
-    }
 
-    setIsWiping(false)
-    setWipeProgress(100)
-    toast({
-      title: "Files Securely Deleted",
-      description: `${selectedFiles.length} file(s) overwritten ${secureDeletePasses}x with random data`,
-    })
-    setSelectedFiles([])
-    setWipeProgress(0)
-    setCurrentPass(0)
+      const results = (data.results || []) as SecureDeleteResult[]
+      const validFiles = results
+        .filter((result) => !result.error)
+        .map((result) => `${result.name} (${formatBytes(result.size)})`)
+
+      setSelectedFiles(validFiles)
+      setSecureDeleteErrors(data.errors || [])
+      setDeleteConfirm("")
+      setWipeProgress(100)
+      toast({
+        title: "Validation Complete",
+        description: `${validFiles.length} file(s) can be securely deleted`,
+      })
+    } catch (error) {
+      setSelectedFiles([])
+      toast({
+        title: "Validation Failed",
+        description: error instanceof Error ? error.message : "Failed to validate files",
+        variant: "destructive",
+      })
+    } finally {
+      setIsWiping(false)
+      setWipeProgress(0)
+    }
   }
 
-  const handleFileSelect = () => {
-    // Simulate file selection
-    const mockFiles = ["document.pdf", "photo.jpg", "data.xlsx"]
-    setSelectedFiles(mockFiles)
-    toast({
-      title: "Files Selected",
-      description: `${mockFiles.length} files ready for secure deletion`,
-    })
+  const handleSecureDelete = async () => {
+    const filePaths = getRequestedFilePaths()
+    if (filePaths.length === 0 || selectedFiles.length === 0) {
+      toast({
+        title: "No Validated Files",
+        description: "Validate app-owned file paths before deleting.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (deleteConfirm !== "SECURE_DELETE") {
+      toast({
+        title: "Confirmation Required",
+        description: "Type SECURE_DELETE exactly before running destructive deletion.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsWiping(true)
+    setWipeProgress(35)
+    setCurrentPass(secureDeletePasses)
+
+    try {
+      const response = await fetch(`${API_URL}/security/secure-delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filePaths,
+          passes: secureDeletePasses,
+          dryRun: false,
+          confirm: "SECURE_DELETE",
+        }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || "Secure deletion failed")
+      }
+
+      setSecureDeleteErrors(data.errors || [])
+      setSelectedFiles([])
+      setDeleteConfirm("")
+      setFilePathInput("")
+      setWipeProgress(100)
+      toast({
+        title: "Secure Deletion Complete",
+        description: data.message || "Selected files were deleted.",
+      })
+    } catch (error) {
+      toast({
+        title: "Secure Deletion Failed",
+        description: error instanceof Error ? error.message : "Failed to securely delete files",
+        variant: "destructive",
+      })
+    } finally {
+      setIsWiping(false)
+      setWipeProgress(0)
+      setCurrentPass(0)
+    }
   }
 
   return (
@@ -212,26 +308,55 @@ export default function DeviceSecurityPage() {
           <CardContent className="space-y-6">
             <div className="space-y-4">
               <div className="space-y-3">
-                <Label className="text-base">Select Files to Erase</Label>
+                <Label htmlFor="secure-delete-paths" className="text-base">
+                  App-Owned File Paths to Erase
+                </Label>
+                <Textarea
+                  id="secure-delete-paths"
+                  value={filePathInput}
+                  onChange={(event) => {
+                    setFilePathInput(event.target.value)
+                    setSelectedFiles([])
+                    setDeleteConfirm("")
+                  }}
+                  placeholder={"/data/downloads/example.iso\n/data/downloads/example.srt"}
+                  rows={4}
+                  className="font-mono text-sm"
+                />
                 <div className="flex gap-3">
-                  <Button onClick={handleFileSelect} variant="outline" className="flex-1 hover-lift bg-transparent">
+                  <Button
+                    onClick={handleValidateSecureDelete}
+                    variant="outline"
+                    className="flex-1 hover-lift bg-transparent"
+                    disabled={isWiping}
+                  >
                     <FolderOpen className="w-4 h-4 mr-2" />
-                    Browse Files
-                  </Button>
-                  <Button variant="outline" className="flex-1 hover-lift bg-transparent">
-                    <Upload className="w-4 h-4 mr-2" />
-                    Select Folder
+                    Validate Paths
                   </Button>
                 </div>
 
                 {selectedFiles.length > 0 && (
                   <div className="p-4 rounded-lg bg-muted/20 border border-border">
-                    <p className="text-sm font-medium mb-2">Selected Files ({selectedFiles.length}):</p>
+                    <p className="text-sm font-medium mb-2">Validated Files ({selectedFiles.length}):</p>
                     <div className="space-y-1">
                       {selectedFiles.map((file, idx) => (
                         <div key={idx} className="text-sm text-muted-foreground flex items-center gap-2">
                           <FileX className="w-3 h-3" />
                           {file}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {secureDeleteErrors.length > 0 && (
+                  <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
+                    <p className="text-sm font-medium mb-2 text-red-300">Rejected Paths ({secureDeleteErrors.length}):</p>
+                    <div className="space-y-1">
+                      {secureDeleteErrors.map((error, idx) => (
+                        <div key={idx} className="text-sm text-red-200/90 flex items-start gap-2">
+                          <AlertTriangle className="w-3 h-3 mt-1" />
+                          <span>{error}</span>
                         </div>
                       ))}
                     </div>
@@ -271,13 +396,15 @@ export default function DeviceSecurityPage() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="flex items-center gap-2">
                       <RefreshCw className="w-4 h-4 animate-spin" />
-                      Pass {currentPass} of {secureDeletePasses} - Writing random data...
+                      {currentPass > 0
+                        ? `Deleting with ${secureDeletePasses} overwrite pass(es)...`
+                        : "Validating file paths..."}
                     </span>
                     <span className="font-mono">{wipeProgress.toFixed(1)}%</span>
                   </div>
                   <Progress value={wipeProgress} className="h-3" />
                   <p className="text-xs text-muted-foreground">
-                    Overwriting file sectors with cryptographically secure random data
+                    The backend only accepts regular files inside configured app-owned directories.
                   </p>
                 </div>
               )}
@@ -294,17 +421,17 @@ export default function DeviceSecurityPage() {
                 <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
                   <div className="flex items-center gap-2 mb-1">
                     <Lock className="w-4 h-4 text-blue-400" />
-                    <span className="text-xs font-medium text-blue-400">Sector Overwrite</span>
+                    <span className="text-xs font-medium text-blue-400">Best-Effort Overwrite</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">Writes to disk sectors directly</p>
+                  <p className="text-xs text-muted-foreground">Syncs random overwrite passes before unlink</p>
                 </div>
 
                 <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
                   <div className="flex items-center gap-2 mb-1">
                     <Zap className="w-4 h-4 text-purple-400" />
-                    <span className="text-xs font-medium text-purple-400">Forensic-Proof</span>
+                    <span className="text-xs font-medium text-purple-400">Storage Caveats</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">Prevents data recovery</p>
+                  <p className="text-xs text-muted-foreground">SSD wear leveling and snapshots can retain copies</p>
                 </div>
               </div>
 
@@ -315,15 +442,29 @@ export default function DeviceSecurityPage() {
                     <p className="text-sm font-medium text-yellow-400">⚠️ Irreversible Operation</p>
                     <p className="text-sm text-muted-foreground">
                       Files will be overwritten {secureDeletePasses} times with cryptographically random data. This
-                      process cannot be undone and prevents all data recovery attempts including forensic analysis.
+                      process cannot be undone, but SSDs, snapshots, backups, and journaling filesystems may retain
+                      copies outside app control.
                     </p>
                   </div>
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="secure-delete-confirm" className="text-base">
+                  Type SECURE_DELETE to enable deletion
+                </Label>
+                <Input
+                  id="secure-delete-confirm"
+                  value={deleteConfirm}
+                  onChange={(event) => setDeleteConfirm(event.target.value)}
+                  placeholder="SECURE_DELETE"
+                  className="font-mono"
+                />
+              </div>
+
               <Button
                 onClick={handleSecureDelete}
-                disabled={isWiping || selectedFiles.length === 0}
+                disabled={isWiping || selectedFiles.length === 0 || deleteConfirm !== "SECURE_DELETE"}
                 variant="destructive"
                 size="lg"
                 className="w-full hover-lift text-base"

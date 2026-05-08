@@ -14,6 +14,9 @@
     "frontend:build": "pnpm --dir frontend build",
     "frontend:lint": "pnpm --dir frontend lint",
     "backend:dev": "cd backend && go run ./cmd/server",
-    "backend:test": "cd backend && go test ./..."
+    "backend:test": "cd backend && go test ./...",
+    "file-viewer:dev": "cd file-viewer && npm start",
+    "file-viewer:build": "cd file-viewer && npm run build",
+    "file-viewer:build:linux": "cd file-viewer && npm run build:linux"
   }
 }

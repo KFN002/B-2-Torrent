@@ -1,0 +1,60 @@
+{
+  "name": "b2-safe-file-viewer",
+  "version": "1.0.0",
+  "description": "Standalone local-first file viewer with hashing, safe previews, and explicit delete controls",
+  "author": {
+    "name": "B-2-Torrent",
+    "email": "security@b2torrent.com"
+  },
+  "homepage": "https://github.com/KFN002/B-2-Torrent",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder --publish never",
+    "build:win": "electron-builder --win --x64 --arm64",
+    "build:mac": "electron-builder --mac --x64 --arm64",
+    "build:linux": "electron-builder --linux AppImage deb tar.gz --x64",
+    "build:linux:rpm": "electron-builder --linux rpm --x64",
+    "pack": "electron-builder --dir",
+    "portable": "electron-builder --win portable --linux AppImage"
+  },
+  "build": {
+    "appId": "com.b2torrent.safefileviewer",
+    "productName": "B2 Safe File Viewer",
+    "compression": "maximum",
+    "directories": {
+      "output": "dist"
+    },
+    "files": ["main.js", "preload.js", "renderer.js", "index.html", "styles.css"],
+    "asar": true,
+    "win": {
+      "target": ["nsis", "portable", "zip"],
+      "artifactName": "B2-Safe-File-Viewer-${version}-${arch}.${ext}"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.utilities",
+      "hardenedRuntime": true,
+      "artifactName": "B2-Safe-File-Viewer-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "target": ["AppImage", "deb", "tar.gz"],
+      "category": "Utility",
+      "artifactName": "B2-Safe-File-Viewer-${version}-${arch}.${ext}"
+    },
+    "deb": {
+      "compression": "gz"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^42.0.0",
+    "electron-builder": "^26.8.1"
+  }
+}

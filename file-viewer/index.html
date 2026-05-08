@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' file: blob: data:; script-src 'self'; style-src 'self'; img-src 'self' file: data: blob:; media-src 'self' file: data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>B2 Safe File Viewer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">B2</div>
+          <div>
+            <h1>Safe File Viewer</h1>
+            <p id="runtime-info">Local session</p>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <button id="open-files" class="primary-button">Open files</button>
+          <button id="reveal-file" class="ghost-button" disabled>Reveal</button>
+        </div>
+
+        <div class="file-list" id="file-list" aria-label="Opened files"></div>
+      </aside>
+
+      <section class="workspace">
+        <header class="workspace-header">
+          <div>
+            <p class="eyebrow">Standalone local viewer</p>
+            <h2 id="file-title">No file selected</h2>
+          </div>
+          <div class="header-actions">
+            <button id="copy-hash" class="ghost-button" disabled>Copy SHA-256</button>
+            <button id="forget-file" class="ghost-button" disabled>Forget</button>
+          </div>
+        </header>
+
+        <section id="empty-state" class="empty-state">
+          <div class="empty-icon">⌁</div>
+          <h3>Open a file to inspect it without adding history.</h3>
+          <p>Files stay on this device. Metadata, hashes, previews, and delete operations are mediated by the local app process.</p>
+        </section>
+
+        <section id="file-panel" class="file-panel hidden">
+          <div class="status-row" id="warning-row"></div>
+
+          <div class="details-grid">
+            <div class="detail-card">
+              <span>Name</span>
+              <strong id="meta-name"></strong>
+            </div>
+            <div class="detail-card">
+              <span>Size</span>
+              <strong id="meta-size"></strong>
+            </div>
+            <div class="detail-card">
+              <span>Signature</span>
+              <strong id="meta-signature"></strong>
+            </div>
+            <div class="detail-card">
+              <span>Entropy</span>
+              <strong id="meta-entropy"></strong>
+            </div>
+          </div>
+
+          <div class="content-grid">
+            <section class="panel">
+              <div class="panel-heading">
+                <h3>Preview</h3>
+                <input id="text-search" class="search-input" placeholder="Search text preview" />
+              </div>
+              <div id="preview" class="preview-surface"></div>
+              <p id="search-result" class="muted-line"></p>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h3>File Facts</h3>
+              </div>
+              <dl class="facts">
+                <dt>Directory</dt>
+                <dd id="meta-directory"></dd>
+                <dt>Modified</dt>
+                <dd id="meta-modified"></dd>
+                <dt>Mode</dt>
+                <dd id="meta-mode"></dd>
+                <dt>SHA-256</dt>
+                <dd id="meta-sha" class="mono wrap"></dd>
+              </dl>
+            </section>
+          </div>
+
+          <section class="panel delete-panel">
+            <div>
+              <h3>Safe Delete</h3>
+              <p class="muted-line">
+                Trash is recoverable. Overwrite + delete is best effort and cannot defeat SSD wear leveling, snapshots, backups, or journal history.
+              </p>
+            </div>
+            <div class="delete-controls">
+              <label>
+                Mode
+                <select id="delete-mode">
+                  <option value="trash">Move to OS trash</option>
+                  <option value="overwrite">Overwrite then unlink</option>
+                </select>
+              </label>
+              <label>
+                Passes
+                <input id="delete-passes" type="range" min="1" max="35" value="3" />
+                <span id="passes-label">3</span>
+              </label>
+              <label class="confirm-label">
+                Confirm file name
+                <input id="delete-confirm" placeholder="Type the exact file name" />
+              </label>
+              <button id="delete-file" class="danger-button" disabled>Delete selected file</button>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <div id="toast" class="toast hidden"></div>
+    <script src="./renderer.js"></script>
+  </body>
+</html>

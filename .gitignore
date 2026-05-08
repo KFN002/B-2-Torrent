@@ -7,6 +7,7 @@ node_modules/
 frontend/node_modules/
 browser/dist/
 vpn-client/dist/
+file-viewer/dist/
 frontend/.next/
 frontend/out/
 frontend/.env.local

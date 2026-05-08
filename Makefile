@@ -40,6 +40,10 @@ help:
 	@echo "  make logs-frontend   - Show frontend logs"
 	@echo "  make monitor         - Open monitoring dashboards"
 	@echo ""
+	@echo "🧰 Standalone Apps:"
+	@echo "  make file-viewer-build   - Build B2 Safe File Viewer"
+	@echo "  make file-viewer-package - Package B2 Safe File Viewer"
+	@echo ""
 	@echo "🗄️  Database:"
 	@echo "  make backup          - Backup database"
 	@echo "  make restore         - Restore database"
@@ -188,6 +192,16 @@ browser-package:
 	cd browser && npm run package:all
 	@echo "✅ Executables created in browser/dist/"
 
+file-viewer-build:
+	@echo "🧰 Building B2 Safe File Viewer..."
+	cd file-viewer && npm install && npm run build
+	@echo "✅ File viewer built. Run with: cd file-viewer && npm start"
+
+file-viewer-package:
+	@echo "📦 Packaging B2 Safe File Viewer for Linux..."
+	cd file-viewer && npm run build:linux
+	@echo "✅ Executables created in file-viewer/dist/"
+
 test:
 	@echo "🧪 Running tests..."
 	@echo "Backend tests..."
@@ -202,6 +216,8 @@ install-deps:
 	pnpm --dir frontend install --frozen-lockfile
 	@echo "Installing browser dependencies..."
 	cd browser && npm install
+	@echo "Installing file viewer dependencies..."
+	cd file-viewer && npm install
 	@echo "Installing Go dependencies..."
 	cd backend && go mod download
 	@echo "✅ All dependencies installed"

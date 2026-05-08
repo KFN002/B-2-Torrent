@@ -12,6 +12,7 @@ backend/        Go REST API, torrent client integration, backend Dockerfile
 nginx/          Local reverse proxy for frontend and /api
 browser/        Optional standalone secure browser Electron app
 vpn-client/     Optional standalone VPN/proxy Electron app
+file-viewer/    Optional standalone safe file viewer and delete utility
 scripts/        install, health, and environment generation scripts
 ```
 
@@ -44,6 +45,10 @@ pnpm --dir frontend install --frozen-lockfile
 docker compose build
 docker compose up -d
 ```
+
+### Debian / Secure Linux
+
+For Debian stable, Qubes AppVMs, Kicksecure/Whonix-style workstations, and hardened Linux desktops, see [docs/DEBIAN_SECURE_LINUX.md](docs/DEBIAN_SECURE_LINUX.md). The short version is: use a dedicated user, encrypted storage, localhost-only ports, a host firewall, and a dedicated VM/profile for torrent and file-inspection workflows.
 
 ## Environment
 
@@ -113,6 +118,8 @@ docker compose up --build
 - Nginx access logs are disabled and backend logs default to warnings/errors.
 - Backend CORS uses an allowlist from `CORS_ALLOWED_ORIGINS`.
 - File encryption and secure deletion endpoints are restricted to app-owned download, upload, and temp directories.
+- Secure deletion API calls support dry-run validation and require `confirm=SECURE_DELETE` before destructive deletion.
+- `file-viewer/` provides a standalone local viewer with streaming SHA-256, signature checks, safe previews, OS trash, and explicit overwrite-then-unlink deletion.
 - Tor proxy routing is enabled in Docker with `PROXY_CHAIN=tor:9050`; use a trusted VPN at the OS/network layer when your threat model requires it.
 
 ## Deployment Notes
@@ -131,6 +138,8 @@ Before deploying outside localhost:
 npm run gen-env
 npm run frontend:build
 npm run backend:test
+npm run file-viewer:build
+npm run file-viewer:build:linux
 ./start-localhost.sh
 ./stop-localhost.sh
 ./scripts/health-check.sh

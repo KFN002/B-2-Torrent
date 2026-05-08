@@ -121,7 +121,18 @@ All HTTP responses include:
 - **Preset Labels**: Includes 7-pass and 35-pass overwrite presets for compatibility with common terminology
 - **Cryptographic Random Data**: CSPRNG for all overwrites
 - **Synced Writes**: File writes are synced before deletion
+- **Dry Run & Confirmation**: API deletion validates first and requires `confirm=SECURE_DELETE` for destructive requests
+- **Regular Files Only**: Directories, special files, and paths outside app-owned roots are rejected
 - **Storage Caveat**: SSD wear leveling, snapshots, cloud sync, and journaling filesystems can keep historical copies outside app control
+
+### B2 Safe File Viewer
+- **Standalone Desktop App**: Runs independently from the web app
+- **Local Session Scope**: File operations are limited to files opened in the current viewer session
+- **Safe Previews**: Active documents such as HTML/SVG are shown as text; PDFs are not embedded
+- **Streaming SHA-256**: Hashes are calculated without loading the whole file into the renderer
+- **Risk Indicators**: Flags executable signatures, double extensions, unknown signatures, and packed/encrypted-looking samples
+- **Explicit Delete**: OS trash or overwrite-then-unlink both require exact filename confirmation
+- **Renderer Isolation**: Node integration disabled, context isolation enabled, sandbox enabled, no persistent cache
 
 ### Containerization & Isolation
 - Isolated network namespace per service
@@ -261,6 +272,17 @@ The application monitors the controls it can observe locally:
    - Check for security patches
    - Review changelog for security fixes
    - Test updates in isolated environment first
+
+### Debian And Hardened Linux
+
+For Debian stable, Qubes OS AppVMs, Whonix/Kicksecure-style workstations, and similar secure Linux environments:
+
+1. Run B-2-Torrent under a dedicated user or dedicated VM.
+2. Keep downloads, temporary files, and backups on encrypted storage.
+3. Keep Compose ports bound to `127.0.0.1` unless a reviewed TLS/auth reverse proxy is in front.
+4. Use a host firewall profile that blocks unsolicited inbound traffic.
+5. Separate torrent, browsing, and file-inspection identities into different VMs/profiles when possible.
+6. Review [DEBIAN_SECURE_LINUX.md](DEBIAN_SECURE_LINUX.md) before deploying on a hardened workstation.
 
 ## Cleanup & Data Erasure
 

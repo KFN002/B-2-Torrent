@@ -25,6 +25,19 @@ pnpm --dir frontend install --frozen-lockfile
 docker compose build
 ```
 
+Debian / hardened Linux:
+
+```bash
+sudo apt update
+sudo apt install -y ca-certificates curl git make nodejs npm
+node scripts/gen-env.mjs
+corepack enable
+pnpm --dir frontend install --frozen-lockfile
+docker compose build
+```
+
+For a locked-down workstation, use a dedicated user, encrypted `DOWNLOAD_DIR`, and the host firewall guidance in [DEBIAN_SECURE_LINUX.md](DEBIAN_SECURE_LINUX.md).
+
 ## 2. Start
 
 ```bash
@@ -72,4 +85,12 @@ Generate or rotate local secrets:
 
 ```bash
 node scripts/gen-env.mjs --force
+```
+
+Standalone safe file viewer:
+
+```bash
+cd file-viewer
+npm install
+npm start
 ```

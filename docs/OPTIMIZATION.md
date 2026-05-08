@@ -239,6 +239,33 @@ sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
 # (automatically used by PostgreSQL 18)
 ```
 
+### Debian / Secure Linux
+
+Use conservative performance tuning when anonymity routing matters more than raw throughput:
+
+```bash
+# Dedicated encrypted download location
+sudo install -d -m 0700 -o "$USER" -g "$USER" /srv/b2torrent/downloads
+
+# BuildKit for faster local rebuilds
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
+
+# Keep the stack local-only unless a reviewed reverse proxy is used
+docker compose ps
+ss -ltnp | grep -E ':(80|3000|8080|5432|6379|9050|15672)\b'
+```
+
+For Debian stable and secure Linux distributions, prefer:
+
+- Encrypted NVMe/SSD storage for downloads and database volumes.
+- Rootless Docker or a dedicated VM when available.
+- BBR only after testing it through your VPN/Tor route.
+- `noatime` on dedicated encrypted download volumes when compatible with your backup policy.
+- Separate VMs/profiles for torrenting, browsing, and untrusted-file inspection.
+
+See [DEBIAN_SECURE_LINUX.md](DEBIAN_SECURE_LINUX.md) for the full hardening checklist.
+
 ### macOS
 ```bash
 # Increase file descriptors

@@ -6,8 +6,14 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"go.uber.org/zap"
+)
+
+const (
+	maxSecureDeleteFiles        = 25
+	secureDeleteConfirmationKey = "SECURE_DELETE"
 )
 
 // SecurityConfig represents security settings
@@ -279,6 +285,16 @@ func (h *Handlers) SecureDeleteFile(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		FilePaths []string `json:"filePaths"`
 		Passes    int      `json:"passes"`
+		DryRun    bool     `json:"dryRun"`
+		Confirm   string   `json:"confirm"`
+	}
+
+	type secureDeleteResult struct {
+		Path    string `json:"path"`
+		Name    string `json:"name"`
+		Size    int64  `json:"size"`
+		Deleted bool   `json:"deleted"`
+		Error   string `json:"error,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -292,22 +308,65 @@ func (h *Handlers) SecureDeleteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(request.FilePaths) > maxSecureDeleteFiles {
+		h.writeError(w, http.StatusBadRequest, fmt.Sprintf("A maximum of %d files can be processed at once", maxSecureDeleteFiles))
+		return
+	}
+
 	if request.Passes < 3 || request.Passes > 35 {
 		request.Passes = 3 // Default to triple overwrite
 	}
 
-	h.logger.Info("Starting secure file deletion",
+	if !request.DryRun && request.Confirm != secureDeleteConfirmationKey {
+		h.writeError(w, http.StatusBadRequest, "Secure deletion requires confirm=SECURE_DELETE")
+		return
+	}
+
+	h.logger.Info("Preparing secure file deletion",
 		zap.Int("fileCount", len(request.FilePaths)),
 		zap.Int("passes", request.Passes),
+		zap.Bool("dryRun", request.DryRun),
 	)
 
 	deletedFiles := []string{}
 	errors := []string{}
+	results := make([]secureDeleteResult, 0, len(request.FilePaths))
 
 	for _, filePath := range request.FilePaths {
+		result := secureDeleteResult{
+			Path: filePath,
+			Name: filepath.Base(filePath),
+		}
+
 		safePath, err := normalizeUserFilePath(filePath)
 		if err != nil {
-			errors = append(errors, fmt.Sprintf("%s: %v", filePath, err))
+			result.Error = err.Error()
+			errors = append(errors, fmt.Sprintf("%s: %v", result.Name, err))
+			results = append(results, result)
+			continue
+		}
+
+		result.Path = safePath
+
+		info, err := os.Stat(safePath)
+		if err != nil {
+			result.Error = fmt.Sprintf("failed to stat file: %v", err)
+			errors = append(errors, fmt.Sprintf("%s: %s", result.Name, result.Error))
+			results = append(results, result)
+			continue
+		}
+		result.Name = info.Name()
+		result.Size = info.Size()
+
+		if !info.Mode().IsRegular() {
+			result.Error = "secure deletion only supports regular files"
+			errors = append(errors, fmt.Sprintf("%s: %s", result.Name, result.Error))
+			results = append(results, result)
+			continue
+		}
+
+		if request.DryRun {
+			results = append(results, result)
 			continue
 		}
 
@@ -315,20 +374,30 @@ func (h *Handlers) SecureDeleteFile(w http.ResponseWriter, r *http.Request) {
 			h.logger.Error("Failed to securely delete file",
 				zap.Error(err),
 			)
-			errors = append(errors, fmt.Sprintf("%s: %v", filePath, err))
+			result.Error = err.Error()
+			errors = append(errors, fmt.Sprintf("%s: %v", result.Name, err))
 		} else {
 			h.logger.Info("File securely deleted",
 				zap.Int("passes", request.Passes),
 			)
+			result.Deleted = true
 			deletedFiles = append(deletedFiles, safePath)
 		}
+		results = append(results, result)
+	}
+
+	message := fmt.Sprintf("Securely deleted %d file(s) with %d overwrites", len(deletedFiles), request.Passes)
+	if request.DryRun {
+		message = fmt.Sprintf("Validated %d file(s) for secure deletion", len(results)-len(errors))
 	}
 
 	response := map[string]interface{}{
 		"deletedFiles": deletedFiles,
 		"errors":       errors,
 		"passes":       request.Passes,
-		"message":      fmt.Sprintf("Securely deleted %d file(s) with %d overwrites", len(deletedFiles), request.Passes),
+		"dryRun":       request.DryRun,
+		"results":      results,
+		"message":      message,
 	}
 
 	h.writeJSON(w, http.StatusOK, response)
@@ -350,7 +419,6 @@ func secureDeleteFile(filePath string, passes int, logger *zap.Logger) error {
 
 	fileSize := fileInfo.Size()
 	logger.Debug("File opened for secure deletion",
-		zap.String("file", filePath),
 		zap.Int64("size", fileSize),
 	)
 
@@ -390,6 +458,10 @@ func secureDeleteFile(filePath string, passes int, logger *zap.Logger) error {
 				file.Close()
 				return fmt.Errorf("failed to write random data (pass %d): %w", pass, err)
 			}
+			if n == 0 {
+				file.Close()
+				return fmt.Errorf("failed to write random data (pass %d): no bytes written", pass)
+			}
 
 			written += int64(n)
 		}
@@ -416,5 +488,18 @@ func secureDeleteFile(filePath string, passes int, logger *zap.Logger) error {
 		return fmt.Errorf("failed to remove file: %w", err)
 	}
 
+	if err := syncParentDir(filePath); err != nil {
+		logger.Debug("Failed to sync parent directory after secure deletion", zap.Error(err))
+	}
+
 	return nil
+}
+
+func syncParentDir(filePath string) error {
+	dir, err := os.Open(filepath.Dir(filePath))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }

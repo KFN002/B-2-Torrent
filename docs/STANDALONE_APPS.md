@@ -1,6 +1,6 @@
 # B2 Standalone Applications
 
-This document describes the two standalone desktop applications included in the B-2-Torrent project.
+This document describes the standalone desktop applications included in the B-2-Torrent project.
 
 ## 1. B2 VPN Client
 
@@ -210,6 +210,44 @@ Real-time statistics showing blocked content:
 
 ---
 
+## 3. B2 Safe File Viewer
+
+### Overview
+Standalone local file viewer for inspecting files before opening them in trusted applications. It focuses on metadata, hashes, safe previews, risk indicators, and explicit deletion controls.
+
+### Features
+- **Native File Picker**: File operations are scoped to files opened in the current session
+- **Streaming SHA-256**: Hashes large files in the main process
+- **Metadata Inspection**: Size, path, mode, modified time, signature, entropy, and hex sample
+- **Safe Preview Modes**: Images, audio, and video preview directly; active documents are shown as text or hex
+- **Risk Indicators**: Flags executable signatures, double extensions, unknown signatures, and high-entropy packed/encrypted samples
+- **Safe Delete**: Move to OS trash or overwrite-then-unlink after exact filename confirmation
+- **No History**: No persistent cache, no telemetry, no recent-file database
+- **Renderer Isolation**: Node integration disabled, context isolation and sandbox enabled
+
+### Quick Start
+
+```bash
+cd file-viewer
+npm install
+npm start
+```
+
+### Linux Packages
+
+```bash
+cd file-viewer
+npm run build:linux
+```
+
+Outputs are configured for AppImage, `.deb`, and `.tar.gz`. RPM builds are available with `npm run build:linux:rpm` on systems with `rpmbuild`.
+
+### Deletion Notes
+
+OS trash is recoverable. Overwrite-then-unlink is best effort and is most useful on simple magnetic storage without snapshots. SSD wear leveling, copy-on-write filesystems, journaling, snapshots, backups, and cloud sync can keep older data outside app control. For sensitive files, use encrypted storage and destroy keys when possible.
+
+---
+
 ## Integration
 
 ### Using Browser with VPN
@@ -251,6 +289,21 @@ npm run build:linux
 
 ```bash
 cd browser
+
+# Windows
+npm run build:win
+
+# macOS
+npm run build:mac
+
+# Linux
+npm run build:linux
+```
+
+### Safe File Viewer
+
+```bash
+cd file-viewer
 
 # Windows
 npm run build:win
