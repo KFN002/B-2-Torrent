@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/anacrolix/dht/v2/krpc"
 	"github.com/anacrolix/torrent"
 	"go.uber.org/zap"
 )
@@ -36,6 +37,10 @@ type ClientConfig struct {
 	TorEnabled       bool // Add Tor enabled config
 	NoLogsMode       bool
 	ObfuscateTraffic bool
+	IPObfuscation    bool
+	DNSObfuscation   bool
+	DHTInvisibility  bool
+	DisableSharing   bool
 	DisableHistory   bool
 	DisableMetadata  bool
 }
@@ -79,11 +84,28 @@ type ProxyConnection struct {
 	Uptime    int     `json:"uptime"`
 }
 
+type PrivacyStatus struct {
+	IPObfuscation              bool `json:"ipObfuscation"`
+	DNSObfuscation             bool `json:"dnsObfuscation"`
+	DHTInvisibility            bool `json:"dhtInvisibility"`
+	SharingDisabled            bool `json:"sharingDisabled"`
+	PeerExchangeDisabled       bool `json:"peerExchangeDisabled"`
+	InboundConnectionsDisabled bool `json:"inboundConnectionsDisabled"`
+	DirectPeerDialingDisabled  bool `json:"directPeerDialingDisabled"`
+	UDPTrackersBlocked         bool `json:"udpTrackersBlocked"`
+	ProxyRequired              bool `json:"proxyRequired"`
+	ProxyAvailable             bool `json:"proxyAvailable"`
+}
+
 func NewClient(proxyChainStr string, downloadDir string) (*Client, error) {
 	logger, _ := zap.NewProduction()
 
-	noLogsMode := os.Getenv("NO_LOGS_MODE") == "true"
-	obfuscateTraffic := os.Getenv("OBFUSCATE_TRAFFIC") == "true"
+	noLogsMode := envBoolDefault("NO_LOGS_MODE", false)
+	obfuscateTraffic := envBoolDefault("OBFUSCATE_TRAFFIC", false)
+	ipObfuscation := envBoolDefault("IP_OBFUSCATION", false)
+	dnsObfuscation := envBoolDefault("DNS_OBFUSCATION", false)
+	dhtInvisibility := envBoolDefault("DHT_INVISIBILITY", true) || noLogsMode
+	disableSharing := envBoolDefault("DISABLE_SHARING", true) || noLogsMode
 
 	if noLogsMode {
 		logger.Info("No-logs mode enabled - minimal data persistence")
@@ -131,8 +153,22 @@ func NewClient(proxyChainStr string, downloadDir string) (*Client, error) {
 
 	cfg := torrent.NewDefaultClientConfig()
 	cfg.DataDir = downloadDir
-	cfg.NoUpload = false
+	cfg.NoUpload = disableSharing
 	cfg.Seed = false
+	cfg.NoDHT = dhtInvisibility
+	cfg.PeriodicallyAnnounceTorrentsToDht = !dhtInvisibility
+	cfg.DisablePEX = dhtInvisibility
+	cfg.DisableUTP = dhtInvisibility || ipObfuscation
+	cfg.DisableWebtorrent = true
+	cfg.DisableWebseeds = true
+	cfg.NoDefaultPortForwarding = true
+	cfg.DisableIPv6 = ipObfuscation
+	cfg.DisableAggressiveUpload = true
+	if dhtInvisibility {
+		cfg.DHTOnQuery = func(query *krpc.Msg, source net.Addr) bool {
+			return false
+		}
+	}
 
 	if torEnabled && len(proxyChain) > 0 {
 		cfg.HTTPProxy = func(req *http.Request) (*url.URL, error) {
@@ -150,6 +186,13 @@ func NewClient(proxyChainStr string, downloadDir string) (*Client, error) {
 		}
 		cfg.DialForPeerConns = false
 		cfg.AcceptPeerConnections = false
+		if dnsObfuscation {
+			cfg.LookupTrackerIp = proxyTrackerLookup(multiDialer, logger)
+		}
+	} else if ipObfuscation {
+		cfg.DialForPeerConns = false
+		cfg.AcceptPeerConnections = false
+		logger.Warn("IP obfuscation requested without an available proxy chain; direct peer traffic is disabled")
 	}
 
 	if noLogsMode {
@@ -204,18 +247,79 @@ func NewClient(proxyChainStr string, downloadDir string) (*Client, error) {
 			TorEnabled:       torEnabled,
 			NoLogsMode:       noLogsMode,
 			ObfuscateTraffic: obfuscateTraffic,
+			IPObfuscation:    ipObfuscation,
+			DNSObfuscation:   dnsObfuscation,
+			DHTInvisibility:  dhtInvisibility,
+			DisableSharing:   disableSharing,
 			DisableHistory:   noLogsMode,
 			DisableMetadata:  noLogsMode,
 		},
 	}, nil
 }
 
-func (c *Client) AddMagnet(magnetURI string) (string, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func envBoolDefault(key string, fallback bool) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	case "":
+		return fallback
+	default:
+		return fallback
+	}
+}
 
-	if !strings.HasPrefix(strings.ToLower(magnetURI), "magnet:?") {
-		return "", fmt.Errorf("invalid magnet URI")
+func proxyTrackerLookup(dialer *MultiProxyDialer, logger *zap.Logger) func(*url.URL) ([]net.IP, error) {
+	resolverAddress := strings.TrimSpace(os.Getenv("DNS_OBFUSCATION_RESOLVER"))
+	if resolverAddress == "" {
+		resolverAddress = "1.1.1.1:53"
+	}
+
+	resolver := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			logger.Debug("Resolving tracker DNS through proxy chain", zap.String("resolver", resolverAddress))
+			return dialer.DialContext(ctx, "tcp", resolverAddress)
+		},
+	}
+
+	return func(trackerURL *url.URL) ([]net.IP, error) {
+		host := strings.TrimSpace(trackerURL.Hostname())
+		if host == "" {
+			return nil, fmt.Errorf("tracker host is empty")
+		}
+		if ip := net.ParseIP(host); ip != nil {
+			if isPrivateOrLocalHost(host) {
+				return nil, fmt.Errorf("tracker resolved to private or loopback IP")
+			}
+			return []net.IP{ip}, nil
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		ips, err := resolver.LookupIP(ctx, "ip", host)
+		if err != nil {
+			return nil, fmt.Errorf("obfuscated tracker DNS lookup failed: %w", err)
+		}
+
+		filtered := ips[:0]
+		for _, ip := range ips {
+			if !isPrivateOrLocalHost(ip.String()) {
+				filtered = append(filtered, ip)
+			}
+		}
+		if len(filtered) == 0 {
+			return nil, fmt.Errorf("tracker DNS returned only private or loopback addresses")
+		}
+		return filtered, nil
+	}
+}
+
+func (c *Client) AddMagnet(magnetURI string) (string, error) {
+	if err := c.ValidateMagnetURI(magnetURI); err != nil {
+		return "", err
 	}
 
 	c.logger.Info("Adding magnet link")
@@ -235,7 +339,14 @@ func (c *Client) AddMagnet(magnetURI string) (string, error) {
 	}
 
 	infoHash := t.InfoHash().String()
+	c.mu.Lock()
 	c.torrents[infoHash] = t
+	disableSharing := c.config.DisableSharing
+	c.mu.Unlock()
+
+	if disableSharing {
+		t.DisallowDataUpload()
+	}
 
 	t.DownloadAll()
 
@@ -485,12 +596,100 @@ func (c *Client) SetNoLogsMode(enabled bool) {
 	c.config.NoLogsMode = enabled
 	c.config.DisableHistory = enabled
 	c.config.DisableMetadata = enabled
+	if enabled {
+		c.config.DHTInvisibility = true
+		c.config.DisableSharing = true
+		go c.applySharingPolicy(true)
+	}
 }
 
 func (c *Client) SetTrafficObfuscation(enabled bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.config.ObfuscateTraffic = enabled
+}
+
+func (c *Client) SetIPObfuscation(enabled bool) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if enabled && !(c.torEnabled && len(c.config.ProxyChain) > 0) {
+		c.logger.Warn("IP obfuscation requires a configured proxy chain; keeping direct mode setting disabled")
+		enabled = false
+	}
+	c.config.IPObfuscation = enabled
+	return enabled
+}
+
+func (c *Client) SetDNSObfuscation(enabled bool) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if enabled && !(c.torEnabled && len(c.config.ProxyChain) > 0) {
+		c.logger.Warn("DNS obfuscation requires a configured proxy chain; keeping direct resolver setting disabled")
+		enabled = false
+	}
+	c.config.DNSObfuscation = enabled
+	return enabled
+}
+
+func (c *Client) SetDHTInvisibility(enabled bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.config.DHTInvisibility = enabled
+	if enabled {
+		c.config.EnableDHT = false
+	}
+}
+
+func (c *Client) SetSharingDisabled(enabled bool) {
+	c.mu.Lock()
+	c.config.DisableSharing = enabled
+	c.mu.Unlock()
+	c.applySharingPolicy(enabled)
+}
+
+func (c *Client) ValidateMagnetURI(magnetURI string) error {
+	c.mu.RLock()
+	policy := MagnetValidationPolicy{
+		TorEnabled:       c.torEnabled,
+		AllowUDPTrackers: !(c.config.IPObfuscation || c.config.DNSObfuscation),
+	}
+	c.mu.RUnlock()
+	return ValidateMagnetURIWithPolicy(magnetURI, policy)
+}
+
+func (c *Client) PrivacyStatus() PrivacyStatus {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	proxyAvailable := c.torEnabled && len(c.config.ProxyChain) > 0
+	return PrivacyStatus{
+		IPObfuscation:              c.config.IPObfuscation && proxyAvailable,
+		DNSObfuscation:             c.config.DNSObfuscation && proxyAvailable,
+		DHTInvisibility:            c.config.DHTInvisibility,
+		SharingDisabled:            c.config.DisableSharing,
+		PeerExchangeDisabled:       c.config.DHTInvisibility,
+		InboundConnectionsDisabled: c.config.IPObfuscation || proxyAvailable,
+		DirectPeerDialingDisabled:  c.config.IPObfuscation && !proxyAvailable,
+		UDPTrackersBlocked:         c.config.IPObfuscation || c.config.DNSObfuscation,
+		ProxyRequired:              c.config.IPObfuscation || c.config.DNSObfuscation,
+		ProxyAvailable:             proxyAvailable,
+	}
+}
+
+func (c *Client) applySharingPolicy(disabled bool) {
+	c.mu.RLock()
+	torrents := make([]*torrent.Torrent, 0, len(c.torrents))
+	for _, t := range c.torrents {
+		torrents = append(torrents, t)
+	}
+	c.mu.RUnlock()
+
+	for _, t := range torrents {
+		if disabled {
+			t.DisallowDataUpload()
+		} else {
+			t.AllowDataUpload()
+		}
+	}
 }
 
 func (c *Client) SetLimits(infoHash string, downloadLimit, uploadLimit int) error {

@@ -18,6 +18,7 @@ func SetupRouter(db *database.Database, torrentClient *torrent.Client, logger *z
 	r.Use(middleware.AnonymityHeaders)
 	r.Use(middleware.LimitRequestBody(10 << 20))
 	r.Use(middleware.CORS)
+	r.Use(middleware.APIKey)
 	r.Use(rateLimiter.Middleware)
 	r.Use(recoverer(logger))
 

@@ -252,7 +252,7 @@ button:disabled {
 
 .details-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -277,6 +277,22 @@ button:disabled {
 .detail-card strong {
   display: block;
   overflow-wrap: anywhere;
+}
+
+#meta-risk[data-level="minimal"] {
+  color: var(--success);
+}
+
+#meta-risk[data-level="low"] {
+  color: var(--accent);
+}
+
+#meta-risk[data-level="medium"] {
+  color: var(--warning);
+}
+
+#meta-risk[data-level="high"] {
+  color: var(--danger);
 }
 
 .content-grid {

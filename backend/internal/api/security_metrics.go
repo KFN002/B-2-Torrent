@@ -59,6 +59,9 @@ func (h *Handlers) GetSecurityMetrics(w http.ResponseWriter, r *http.Request) {
 
 	noLogsMode, _ := h.db.GetSetting("no_logs_mode")
 	obfuscateTraffic, _ := h.db.GetSetting("obfuscate_traffic")
+	dhtInvisibility, _ := h.db.GetSetting("dht_invisibility")
+	sharingDisabled, _ := h.db.GetSetting("sharing_disabled")
+	privacy := h.torrentClient.PrivacyStatus()
 
 	// Calculate scores
 	encryptionScore := 0
@@ -86,10 +89,19 @@ func (h *Handlers) GetSecurityMetrics(w http.ResponseWriter, r *http.Request) {
 		anonymityScore = 85
 		anonymityType = "Outline VPN"
 	}
+	if privacy.IPObfuscation && privacy.DNSObfuscation {
+		anonymityScore = min(100, anonymityScore+10)
+	}
 
 	leakScore := 100
 	if !torEnabled && vpnType == "none" {
 		leakScore = 40
+	}
+	if dhtInvisibility == "true" || dhtInvisibility == "" {
+		leakScore = min(100, leakScore+20)
+	}
+	if sharingDisabled == "true" || sharingDisabled == "" {
+		leakScore = min(100, leakScore+10)
 	}
 
 	obfuscationScore := 0

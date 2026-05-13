@@ -296,40 +296,69 @@
 
     <!-- Browser Settings Modal -->
     <div class="modal hidden" id="browserSettingsModal">
-      <div class="modal-content">
-        <h2>⚙️ Browser Settings</h2>
-        <div class="form-group">
-          <label class="checkbox-label">
+      <div class="modal-content wide-modal">
+        <h2>Browser Settings</h2>
+        <div class="protection-board">
+          <div class="protection-board-header">
+            <div>
+              <p class="board-title">Protection Workload</p>
+              <p class="board-subtitle" id="browser-protection-summary">Waiting for settings.</p>
+            </div>
+            <span class="route-pill" id="browser-protection-route">Local session</span>
+          </div>
+          <div class="protection-flow" id="browser-protection-flow"></div>
+          <div class="protection-signals" id="browser-protection-signals"></div>
+        </div>
+        <div class="form-group toggle-card">
+          <label class="checkbox-label toggle-label">
             <input type="checkbox" id="blockAds" checked />
             <span>Block Ads</span>
           </label>
         </div>
-        <div class="form-group">
-          <label class="checkbox-label">
+        <div class="form-group toggle-card">
+          <label class="checkbox-label toggle-label">
             <input type="checkbox" id="blockTrackers" checked />
             <span>Block Trackers</span>
           </label>
         </div>
-        <div class="form-group">
-          <label class="checkbox-label">
+        <div class="form-group toggle-card">
+          <label class="checkbox-label toggle-label">
             <input type="checkbox" id="blockMalware" checked />
             <span>Block Malware</span>
           </label>
         </div>
-        <div class="form-group">
-          <label class="checkbox-label">
+        <div class="form-group toggle-card">
+          <label class="checkbox-label toggle-label">
             <input type="checkbox" id="blockSocial" checked />
             <span>Block Social Media Widgets</span>
           </label>
         </div>
-        <div class="form-group">
-          <label class="checkbox-label">
+        <div class="form-group toggle-card">
+          <label class="checkbox-label toggle-label">
             <input type="checkbox" id="blockFingerprinting" checked />
             <span>Block Fingerprinting</span>
           </label>
         </div>
-        <div class="form-group">
-          <label class="checkbox-label">
+        <div class="form-group toggle-card">
+          <label class="checkbox-label toggle-label">
+            <input type="checkbox" id="httpsOnlyMode" checked />
+            <span>HTTPS-only mode</span>
+          </label>
+        </div>
+        <div class="form-group toggle-card">
+          <label class="checkbox-label toggle-label">
+            <input type="checkbox" id="blockDownloads" checked />
+            <span>Block downloads by default</span>
+          </label>
+        </div>
+        <div class="form-group toggle-card">
+          <label class="checkbox-label toggle-label">
+            <input type="checkbox" id="blockPopups" checked />
+            <span>Block popups and new windows</span>
+          </label>
+        </div>
+        <div class="form-group toggle-card">
+          <label class="checkbox-label toggle-label">
             <input type="checkbox" id="clearOnExit" checked />
             <span>Clear All Data on Exit</span>
           </label>

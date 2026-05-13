@@ -9,8 +9,16 @@ import { toast } from "sonner"
 interface SecurityStatus {
   killSwitchActive: boolean
   dnsProtectionActive: boolean
+  dnsObfuscationActive: boolean
   ipObfuscationActive: boolean
+  dhtInvisible: boolean
+  sharingDisabled: boolean
   trafficObfuscationActive: boolean
+  dataEncryptionActive: boolean
+  proxyRequired: boolean
+  proxyAvailable: boolean
+  udpTrackersBlocked: boolean
+  securityScore: number
   noLogsMode: boolean
   leaksDetected: number
   lastCheck: string
@@ -55,9 +63,11 @@ export function SecurityMonitor() {
     status.killSwitchActive &&
     status.dnsProtectionActive &&
     status.ipObfuscationActive &&
-    status.trafficObfuscationActive
+    status.dnsObfuscationActive &&
+    status.dhtInvisible &&
+    status.sharingDisabled
       ? "maximum"
-      : status.killSwitchActive && status.dnsProtectionActive
+      : status.killSwitchActive && status.dnsProtectionActive && status.dhtInvisible
         ? "high"
         : "basic"
 
@@ -87,8 +97,20 @@ export function SecurityMonitor() {
         <SecurityItem active={status.killSwitchActive} label="Kill Switch" />
         <SecurityItem active={status.dnsProtectionActive} label="DNS Protection" />
         <SecurityItem active={status.ipObfuscationActive} label="IP Obfuscation" />
+        <SecurityItem active={status.dnsObfuscationActive} label="DNS Obfuscation" />
+        <SecurityItem active={status.dhtInvisible} label="DHT Invisibility" />
+        <SecurityItem active={status.sharingDisabled} label="Sharing Disabled" />
+        <SecurityItem active={status.udpTrackersBlocked} label="UDP Trackers Blocked" />
         <SecurityItem active={status.trafficObfuscationActive} label="Traffic Obfuscation" />
+        <SecurityItem active={status.dataEncryptionActive} label="Data Encryption" />
         <SecurityItem active={status.noLogsMode} label="No-Logs Mode" />
+
+        {status.proxyRequired && !status.proxyAvailable && (
+          <div className="flex items-center gap-2 p-2 rounded bg-warning/10 border border-warning/20">
+            <AlertTriangle className="h-4 w-4 text-warning" />
+            <span className="text-xs text-warning font-medium">Proxy chain required for requested obfuscation</span>
+          </div>
+        )}
 
         {status.leaksDetected > 0 && (
           <div className="flex items-center gap-2 p-2 rounded bg-destructive/10 border border-destructive/20">

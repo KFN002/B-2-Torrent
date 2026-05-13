@@ -46,10 +46,81 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { useLanguage } from "@/lib/i18n"
 import { Progress } from "@/components/ui/progress"
+import { Badge } from "@/components/ui/badge"
 
 interface SettingsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+}
+
+interface SecurityStatusDetails {
+  killSwitchActive: boolean
+  dnsProtectionActive: boolean
+  dnsObfuscationActive: boolean
+  ipObfuscationActive: boolean
+  dhtInvisible: boolean
+  sharingDisabled: boolean
+  trafficObfuscationActive: boolean
+  dataEncryptionActive: boolean
+  forceEncryptionActive: boolean
+  rejectPlaintextActive: boolean
+  noLogsMode: boolean
+  macRandomizationActive: boolean
+  antiFingerprintActive: boolean
+  secureDeleteActive: boolean
+  peerVerificationActive: boolean
+  blockMaliciousPeersActive: boolean
+  sandboxModeActive: boolean
+  memoryEncryptionActive: boolean
+  autoWipeOnExitActive: boolean
+  stealthModeActive: boolean
+  peerExchangeDisabled: boolean
+  inboundConnectionsDisabled: boolean
+  directPeerDialingDisabled: boolean
+  udpTrackersBlocked: boolean
+  proxyRequired: boolean
+  proxyAvailable: boolean
+  connectionType: string
+  downloadSpeed: number
+  uploadSpeed: number
+  securityScore: number
+  leaksDetected: number
+  lastCheck: string
+}
+
+const defaultSecurityStatus: SecurityStatusDetails = {
+  killSwitchActive: true,
+  dnsProtectionActive: true,
+  dnsObfuscationActive: false,
+  ipObfuscationActive: false,
+  dhtInvisible: true,
+  sharingDisabled: true,
+  trafficObfuscationActive: false,
+  dataEncryptionActive: true,
+  forceEncryptionActive: true,
+  rejectPlaintextActive: true,
+  noLogsMode: false,
+  macRandomizationActive: false,
+  antiFingerprintActive: false,
+  secureDeleteActive: true,
+  peerVerificationActive: true,
+  blockMaliciousPeersActive: true,
+  sandboxModeActive: false,
+  memoryEncryptionActive: true,
+  autoWipeOnExitActive: false,
+  stealthModeActive: false,
+  peerExchangeDisabled: true,
+  inboundConnectionsDisabled: false,
+  directPeerDialingDisabled: false,
+  udpTrackersBlocked: false,
+  proxyRequired: false,
+  proxyAvailable: false,
+  connectionType: "Direct Connection",
+  downloadSpeed: 0,
+  uploadSpeed: 0,
+  securityScore: 100,
+  leaksDetected: 0,
+  lastCheck: "",
 }
 
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
@@ -62,6 +133,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     bandwidthUsage: 0,
     securityLevel: 100,
   })
+  const [securityStatus, setSecurityStatus] = useState<SecurityStatusDetails>(defaultSecurityStatus)
 
   const [settings, setSettings] = useState({
     maxDownloadRate: "",
@@ -102,7 +174,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [securitySettings, setSecuritySettings] = useState({
     killSwitchEnabled: true,
     dnsProtectionEnabled: true,
+    dnsObfuscationEnabled: false,
     ipObfuscationEnabled: true,
+    dhtInvisibility: true,
+    sharingDisabled: true,
     dataEncryptionEnabled: true,
     torEnabled: true,
     vpnType: "none",
@@ -129,8 +204,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     if (open) {
       fetchSettings()
       fetchSecuritySettings()
-      const interval = setInterval(fetchConnectionStats, 2000)
-      return () => clearInterval(interval)
+      fetchSecurityStatus()
+      const statsInterval = setInterval(fetchConnectionStats, 2000)
+      const statusInterval = setInterval(fetchSecurityStatus, 3000)
+      return () => {
+        clearInterval(statsInterval)
+        clearInterval(statusInterval)
+      }
     }
   }, [open])
 
@@ -182,13 +262,17 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
   const fetchSecuritySettings = async () => {
     try {
-      const response = await fetch("/api/security/status")
+      const response = await fetch("/api/security/config")
       if (response.ok) {
         const data = await response.json()
         setSecuritySettings({
           ...data, // Ensure existing properties are preserved
           // Explicitly set new properties with default values if not in API response
           forceEncryption: data.forceEncryption ?? true,
+          dnsObfuscationEnabled: data.dnsObfuscationEnabled ?? false,
+          ipObfuscationEnabled: data.ipObfuscationEnabled ?? true,
+          dhtInvisibility: data.dhtInvisibility ?? true,
+          sharingDisabled: data.sharingDisabled ?? true,
           encryptionLevel: data.encryptionLevel ?? "strong",
           minEncryptionProtocol: data.minEncryptionProtocol ?? "AES-256",
           rejectPlaintext: data.rejectPlaintext ?? true,
@@ -206,6 +290,18 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       }
     } catch (error) {
       console.error("Failed to fetch security settings:", error)
+    }
+  }
+
+  const fetchSecurityStatus = async () => {
+    try {
+      const response = await fetch("/api/security/status")
+      if (response.ok) {
+        const data = await response.json()
+        setSecurityStatus({ ...defaultSecurityStatus, ...data })
+      }
+    } catch (error) {
+      console.error("Failed to fetch security status:", error)
     }
   }
 
@@ -261,6 +357,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       })
 
       if (response.ok) {
+        await fetchSecuritySettings()
+        await fetchSecurityStatus()
         toast({
           title: "Security settings saved",
           description: "Your security preferences have been updated.",
@@ -331,6 +429,181 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       setIsLoading(false)
     }
   }
+
+  type SecurityBooleanKey = {
+    [Key in keyof typeof securitySettings]: (typeof securitySettings)[Key] extends boolean ? Key : never
+  }[keyof typeof securitySettings]
+
+  const setSecurityToggle = (key: SecurityBooleanKey, checked: boolean) => {
+    setSecuritySettings((current) => ({ ...current, [key]: checked }))
+  }
+
+  const formatRate = (bytesPerSecond: number) => {
+    if (!bytesPerSecond) return "0 KB/s"
+    const units = ["B/s", "KB/s", "MB/s", "GB/s"]
+    let value = bytesPerSecond
+    let unit = 0
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024
+      unit += 1
+    }
+    return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`
+  }
+
+  const protectionScore = Math.max(0, Math.min(100, securityStatus.securityScore || connectionStats.securityLevel))
+  const proxyBlocked =
+    (securityStatus.proxyRequired || securitySettings.vpnType === "tor") && !securityStatus.proxyAvailable
+  const activeProtectionCount = [
+    securityStatus.killSwitchActive,
+    securityStatus.dnsProtectionActive,
+    securityStatus.ipObfuscationActive,
+    securityStatus.dnsObfuscationActive,
+    securityStatus.dhtInvisible,
+    securityStatus.sharingDisabled,
+    securityStatus.forceEncryptionActive,
+    securityStatus.noLogsMode,
+  ].filter(Boolean).length
+
+  const protectionFlow = [
+    {
+      label: "App",
+      value: "guarded",
+      active: true,
+      icon: Shield,
+    },
+    {
+      label: "IP",
+      value: securityStatus.ipObfuscationActive ? "masked" : proxyBlocked ? "needs proxy" : "direct",
+      active: securityStatus.ipObfuscationActive,
+      icon: Eye,
+    },
+    {
+      label: "DNS",
+      value: securityStatus.dnsObfuscationActive
+        ? "proxied"
+        : securityStatus.dnsProtectionActive
+          ? "protected"
+          : "local",
+      active: securityStatus.dnsObfuscationActive || securityStatus.dnsProtectionActive,
+      icon: Globe,
+    },
+    {
+      label: "DHT",
+      value: securityStatus.dhtInvisible ? "silent" : "visible",
+      active: securityStatus.dhtInvisible,
+      icon: EyeOff,
+    },
+    {
+      label: "PEX",
+      value: securityStatus.peerExchangeDisabled ? "blocked" : "allowed",
+      active: securityStatus.peerExchangeDisabled,
+      icon: Users,
+    },
+    {
+      label: "Upload",
+      value: securityStatus.sharingDisabled ? "blocked" : "allowed",
+      active: securityStatus.sharingDisabled,
+      icon: Upload,
+    },
+  ]
+
+  const workSignals = [
+    {
+      label: "Route",
+      value: securityStatus.connectionType,
+      active: securityStatus.ipObfuscationActive || securitySettings.vpnType !== "none",
+      warning: proxyBlocked,
+    },
+    {
+      label: "Tracker DNS",
+      value: securityStatus.dnsObfuscationActive ? "proxy resolver" : "system resolver",
+      active: securityStatus.dnsObfuscationActive,
+      warning: securitySettings.dnsObfuscationEnabled && !securityStatus.dnsObfuscationActive,
+    },
+    {
+      label: "UDP Trackers",
+      value: securityStatus.udpTrackersBlocked ? "blocked" : "allowed",
+      active: securityStatus.udpTrackersBlocked,
+      warning: false,
+    },
+    {
+      label: "Peer Intake",
+      value: securityStatus.inboundConnectionsDisabled ? "closed" : "open",
+      active: securityStatus.inboundConnectionsDisabled,
+      warning: false,
+    },
+    {
+      label: "Traffic",
+      value: `${formatRate(securityStatus.downloadSpeed)} down / ${formatRate(securityStatus.uploadSpeed)} up`,
+      active: securityStatus.downloadSpeed > 0 || securityStatus.uploadSpeed > 0,
+      warning: false,
+    },
+    {
+      label: "Leak Watch",
+      value: securityStatus.leaksDetected > 0 ? `${securityStatus.leaksDetected} detected` : "clear",
+      active: securityStatus.leaksDetected === 0,
+      warning: securityStatus.leaksDetected > 0,
+    },
+  ]
+
+  const quickProtectionToggles: Array<{
+    key: SecurityBooleanKey
+    label: string
+    active: boolean
+    blocked?: boolean
+    icon: typeof Shield
+  }> = [
+    {
+      key: "killSwitchEnabled",
+      label: "Kill Switch",
+      active: securityStatus.killSwitchActive,
+      icon: Shield,
+    },
+    {
+      key: "dnsProtectionEnabled",
+      label: "DNS Leak Guard",
+      active: securityStatus.dnsProtectionActive,
+      icon: Network,
+    },
+    {
+      key: "ipObfuscationEnabled",
+      label: "IP Obfuscation",
+      active: securityStatus.ipObfuscationActive,
+      blocked: securitySettings.ipObfuscationEnabled && !securityStatus.ipObfuscationActive,
+      icon: Eye,
+    },
+    {
+      key: "dnsObfuscationEnabled",
+      label: "DNS Obfuscation",
+      active: securityStatus.dnsObfuscationActive,
+      blocked: securitySettings.dnsObfuscationEnabled && !securityStatus.dnsObfuscationActive,
+      icon: Globe,
+    },
+    {
+      key: "dhtInvisibility",
+      label: "DHT Invisibility",
+      active: securityStatus.dhtInvisible,
+      icon: EyeOff,
+    },
+    {
+      key: "sharingDisabled",
+      label: "Disable Sharing",
+      active: securityStatus.sharingDisabled,
+      icon: Upload,
+    },
+    {
+      key: "forceEncryption",
+      label: "Force Encryption",
+      active: securityStatus.forceEncryptionActive,
+      icon: Lock,
+    },
+    {
+      key: "noLogsMode",
+      label: "No-Logs Mode",
+      active: securityStatus.noLogsMode,
+      icon: HardDrive,
+    },
+  ]
 
   return (
     <>
@@ -838,7 +1111,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-2xl font-bold text-success">{connectionStats.securityLevel}%</p>
+                      <p className="text-2xl font-bold text-success">{protectionScore}%</p>
                       <p className="text-xs text-muted-foreground">Protected</p>
                     </div>
                   </div>
@@ -846,9 +1119,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   <div className="space-y-2">
                     <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Security Level</span>
-                      <span className="font-medium">{connectionStats.securityLevel}%</span>
+                      <span className="font-medium">{protectionScore}%</span>
                     </div>
-                    <Progress value={connectionStats.securityLevel} className="h-2" />
+                    <Progress value={protectionScore} className="h-2" />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 pt-2">
@@ -866,6 +1139,131 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       </div>
                       <p className="text-xl font-bold">{connectionStats.bandwidthUsage} KB/s</p>
                     </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-primary/20 bg-primary/5">
+                <CardContent className="p-4 space-y-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-full border border-primary/20 bg-primary/10 p-2">
+                        <Activity className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold">Protection Workload</p>
+                        <p className="text-xs text-muted-foreground">
+                          {activeProtectionCount} active controls, {securityStatus.connectionType}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge
+                      variant={proxyBlocked ? "destructive" : "outline"}
+                      className={
+                        proxyBlocked
+                          ? ""
+                          : "border-success/30 bg-success/10 text-success hover:bg-success/10"
+                      }
+                    >
+                      {proxyBlocked ? "Proxy required" : "Route ready"}
+                    </Badge>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+                    {protectionFlow.map((item) => {
+                      const Icon = item.icon
+                      return (
+                        <div
+                          key={item.label}
+                          className={`rounded-md border p-3 transition-colors ${
+                            item.active
+                              ? "border-success/30 bg-success/10"
+                              : "border-border bg-background"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <Icon
+                              className={`h-4 w-4 ${item.active ? "text-success" : "text-muted-foreground"}`}
+                            />
+                            <span
+                              className={`h-2 w-2 rounded-full ${
+                                item.active ? "bg-success" : "bg-muted-foreground/40"
+                              }`}
+                            />
+                          </div>
+                          <p className="mt-3 text-xs font-medium">{item.label}</p>
+                          <p className="text-[11px] uppercase text-muted-foreground">{item.value}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {workSignals.map((item) => (
+                      <div
+                        key={item.label}
+                        className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 ${
+                          item.warning
+                            ? "border-warning/30 bg-warning/10"
+                            : item.active
+                              ? "border-success/20 bg-success/5"
+                              : "border-border bg-background"
+                        }`}
+                      >
+                        <span className="text-xs text-muted-foreground">{item.label}</span>
+                        <span
+                          className={`text-right text-xs font-medium ${
+                            item.warning ? "text-warning" : item.active ? "text-success" : "text-foreground"
+                          }`}
+                        >
+                          {item.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    {quickProtectionToggles.map((item) => {
+                      const Icon = item.icon
+                      return (
+                        <div
+                          key={item.key}
+                          className={`rounded-md border p-3 ${
+                            item.blocked
+                              ? "border-warning/30 bg-warning/10"
+                              : item.active
+                                ? "border-success/20 bg-success/5"
+                                : "border-border bg-background"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <Icon
+                                className={`h-4 w-4 shrink-0 ${
+                                  item.blocked
+                                    ? "text-warning"
+                                    : item.active
+                                      ? "text-success"
+                                      : "text-muted-foreground"
+                                }`}
+                              />
+                              <Label className="truncate text-xs font-medium">{item.label}</Label>
+                            </div>
+                            <Switch
+                              checked={Boolean(securitySettings[item.key])}
+                              onCheckedChange={(checked) => setSecurityToggle(item.key, checked)}
+                            />
+                          </div>
+                          <p
+                            className={`mt-2 text-[11px] ${
+                              item.blocked ? "text-warning" : item.active ? "text-success" : "text-muted-foreground"
+                            }`}
+                          >
+                            {item.blocked ? "Waiting for proxy chain" : item.active ? "Active" : "Inactive"}
+                          </p>
+                        </div>
+                      )
+                    })}
                   </div>
                 </CardContent>
               </Card>
@@ -889,10 +1287,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         value={securitySettings.vpnType}
                         onChange={(e) => setSecuritySettings({ ...securitySettings, vpnType: e.target.value })}
                       >
-                        <option value="none">🔓 None (Direct Connection)</option>
-                        <option value="tor">🧅 Tor Multi-Proxy Chain</option>
-                        <option value="vless">⚡ VLESS Protocol</option>
-                        <option value="outline">🛡️ Outline VPN</option>
+                        <option value="none">None (Direct Connection)</option>
+                        <option value="tor">Tor Multi-Proxy Chain</option>
+                        <option value="vless">VLESS Protocol</option>
+                        <option value="outline">Outline VPN</option>
                       </select>
                     </div>
 
@@ -992,10 +1390,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         value={securitySettings.encryptionLevel}
                         onChange={(e) => setSecuritySettings({ ...securitySettings, encryptionLevel: e.target.value })}
                       >
-                        <option value="basic">🔒 Basic (RC4 - Fast)</option>
-                        <option value="standard">🔐 Standard (AES-128)</option>
-                        <option value="strong">🛡️ Strong (AES-256 - Recommended)</option>
-                        <option value="maximum">⚡ Maximum (AES-256-GCM + Perfect Forward Secrecy)</option>
+                        <option value="basic">Basic (RC4 - Fast)</option>
+                        <option value="standard">Standard (AES-128)</option>
+                        <option value="strong">Strong (AES-256 - Recommended)</option>
+                        <option value="maximum">Maximum (AES-256-GCM + Perfect Forward Secrecy)</option>
                       </select>
                       <p className="text-xs text-muted-foreground">
                         Higher levels provide better security but may reduce speed
@@ -1153,8 +1551,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
                     <div className="flex items-center justify-between py-3 px-4 border border-border rounded-lg hover:border-primary/50 transition-all hover:shadow-sm bg-card">
                       <div className="space-y-0.5">
-                        <Label className="text-sm font-medium">Stealth Mode</Label>
-                        <p className="text-xs text-muted-foreground">Hide app presence from system monitors</p>
+                        <Label className="text-sm font-medium">Quiet Network Mode</Label>
+                        <p className="text-xs text-muted-foreground">Reduce announces, discovery chatter, and visible sharing behavior</p>
                       </div>
                       <Switch
                         checked={securitySettings.stealthMode}
@@ -1208,6 +1606,26 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
                 <div className="flex items-center justify-between py-3 px-4 border border-border rounded-lg hover:border-primary/50 transition-all hover:shadow-sm bg-card">
                   <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-full bg-info/10">
+                      <Globe className="h-4 w-4 text-info" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <Label className="text-sm font-medium">DNS Query Obfuscation</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Resolve tracker hostnames through the proxy chain when available
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={securitySettings.dnsObfuscationEnabled}
+                    onCheckedChange={(checked) =>
+                      setSecuritySettings({ ...securitySettings, dnsObfuscationEnabled: checked })
+                    }
+                  />
+                </div>
+
+                <div className="flex items-center justify-between py-3 px-4 border border-border rounded-lg hover:border-primary/50 transition-all hover:shadow-sm bg-card">
+                  <div className="flex items-center gap-3">
                     <div className="p-2 rounded-full bg-success/10">
                       <Eye className="h-4 w-4 text-success" />
                     </div>
@@ -1220,6 +1638,46 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     checked={securitySettings.ipObfuscationEnabled}
                     onCheckedChange={(checked) =>
                       setSecuritySettings({ ...securitySettings, ipObfuscationEnabled: checked })
+                    }
+                  />
+                </div>
+
+                <div className="flex items-center justify-between py-3 px-4 border border-border rounded-lg hover:border-primary/50 transition-all hover:shadow-sm bg-card">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-full bg-warning/10">
+                      <EyeOff className="h-4 w-4 text-warning" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <Label className="text-sm font-medium">DHT Invisibility</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Disable DHT announces, DHT participation, PEX, uTP, and UDP tracker paths
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={securitySettings.dhtInvisibility}
+                    onCheckedChange={(checked) =>
+                      setSecuritySettings({ ...securitySettings, dhtInvisibility: checked })
+                    }
+                  />
+                </div>
+
+                <div className="flex items-center justify-between py-3 px-4 border border-border rounded-lg hover:border-primary/50 transition-all hover:shadow-sm bg-card">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-full bg-destructive/10">
+                      <Upload className="h-4 w-4 text-destructive" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <Label className="text-sm font-medium">Disable Sharing</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Block torrent data upload and seeding for active and new torrents
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={securitySettings.sharingDisabled}
+                    onCheckedChange={(checked) =>
+                      setSecuritySettings({ ...securitySettings, sharingDisabled: checked })
                     }
                   />
                 </div>

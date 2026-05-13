@@ -24,6 +24,11 @@ const elements = {
   memoryValue: document.getElementById("memoryValue"),
   electronValue: document.getElementById("electronValue"),
   nodeValue: document.getElementById("nodeValue"),
+  auditScore: document.getElementById("auditScore"),
+  auditLevel: document.getElementById("auditLevel"),
+  auditSummary: document.getElementById("auditSummary"),
+  auditFindings: document.getElementById("auditFindings"),
+  refreshAuditBtn: document.getElementById("refreshAuditBtn"),
   linkInput: document.getElementById("linkInput"),
   connectLinkBtn: document.getElementById("connectLinkBtn"),
   addServerForm: document.getElementById("addServerForm"),
@@ -134,6 +139,34 @@ function updateStatus(status) {
   }
 
   if (status.lastError) notify(status.lastError, "warning")
+}
+
+function renderSafetyReport(report) {
+  elements.auditScore.textContent = String(report.score)
+  elements.auditLevel.textContent = report.level
+  elements.auditSummary.textContent = report.summary
+
+  const findings = report.findings || []
+  if (findings.length === 0) {
+    elements.auditFindings.innerHTML = '<div class="empty-state">No safety findings.</div>'
+    return
+  }
+
+  elements.auditFindings.innerHTML = findings
+    .map(
+      (finding) => `
+        <article class="audit-item" data-severity="${escapeHTML(finding.severity)}">
+          <strong>${escapeHTML(finding.title)}</strong>
+          <p>${escapeHTML(finding.detail)}</p>
+        </article>
+      `,
+    )
+    .join("")
+}
+
+async function refreshSafetyReport() {
+  const report = await window.api.getSafetyReport()
+  renderSafetyReport(report)
 }
 
 function applySettings(settings) {
@@ -262,6 +295,7 @@ async function connectToServer(index) {
 
   if (result.success) {
     updateStatus(result.status)
+    await refreshSafetyReport()
     notify("Route active.", "success")
   } else {
     notify(result.error, "danger")
@@ -304,6 +338,7 @@ async function connectFromLink() {
 
   if (result.success) {
     updateStatus(result.status)
+    await refreshSafetyReport()
     notify("Route active.", "success")
   } else {
     notify(result.error, "danger")
@@ -315,9 +350,11 @@ elements.disconnectBtn.addEventListener("click", async () => {
   await window.api.disconnectVPN()
   const status = await window.api.getStatus()
   updateStatus(status)
+  await refreshSafetyReport()
   notify("Disconnected.")
 })
 elements.connectLinkBtn.addEventListener("click", connectFromLink)
+elements.refreshAuditBtn.addEventListener("click", refreshSafetyReport)
 
 elements.addServerForm.addEventListener("submit", async (event) => {
   event.preventDefault()
@@ -351,6 +388,7 @@ elements.settingsForm.addEventListener("submit", async (event) => {
   const result = await window.api.saveSettings(readSettings())
   if (result.success) {
     applySettings(result.settings)
+    await refreshSafetyReport()
     elements.settingsState.textContent = "Saved"
     notify("Settings saved.", "success")
   } else {
@@ -367,6 +405,7 @@ async function initialize() {
   await loadSettings()
   await loadServers()
   await refreshStatus()
+  await refreshSafetyReport()
   window.api.onStatusUpdate(updateStatus)
   setInterval(refreshStatus, 1000)
   setInterval(() => {

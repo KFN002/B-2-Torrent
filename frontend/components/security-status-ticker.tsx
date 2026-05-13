@@ -23,8 +23,16 @@ import {
 interface SecurityStatus {
   killSwitchActive: boolean
   dnsProtectionActive: boolean
+  dnsObfuscationActive: boolean
   ipObfuscationActive: boolean
+  dhtInvisible: boolean
+  sharingDisabled: boolean
+  udpTrackersBlocked: boolean
+  proxyRequired: boolean
+  proxyAvailable: boolean
   trafficObfuscationActive: boolean
+  dataEncryptionActive: boolean
+  securityScore: number
   noLogsMode: boolean
   leaksDetected: number
   connectionType: string
@@ -37,9 +45,17 @@ export function SecurityStatusTicker() {
   const [status, setStatus] = useState<SecurityStatus>({
     killSwitchActive: true,
     dnsProtectionActive: true,
-    ipObfuscationActive: true,
-    trafficObfuscationActive: true,
-    noLogsMode: true,
+    dnsObfuscationActive: false,
+    ipObfuscationActive: false,
+    dhtInvisible: true,
+    sharingDisabled: true,
+    udpTrackersBlocked: false,
+    proxyRequired: false,
+    proxyAvailable: false,
+    trafficObfuscationActive: false,
+    dataEncryptionActive: true,
+    securityScore: 100,
+    noLogsMode: false,
     leaksDetected: 0,
     connectionType: "Secure Connection",
     downloadSpeed: 0,
@@ -220,13 +236,15 @@ export function SecurityStatusTicker() {
     status.killSwitchActive &&
     status.dnsProtectionActive &&
     status.ipObfuscationActive &&
-    status.trafficObfuscationActive
+    status.dnsObfuscationActive &&
+    status.dhtInvisible &&
+    status.sharingDisabled
       ? "MAXIMUM"
-      : status.killSwitchActive && status.dnsProtectionActive
+      : status.killSwitchActive && status.dnsProtectionActive && status.dhtInvisible
         ? "HIGH"
         : "BASIC"
 
-  const isSecure = status.leaksDetected === 0 && protectionLevel === "MAXIMUM"
+  const isSecure = status.leaksDetected === 0 && protectionLevel !== "BASIC"
 
   const formattedTime = mounted && currentTime
     ? `${String(currentTime.getHours()).padStart(2, "0")}:${String(currentTime.getMinutes()).padStart(2, "0")}:${String(currentTime.getSeconds()).padStart(2, "0")}`
@@ -355,8 +373,9 @@ export function SecurityStatusTicker() {
             <Shield className="h-3.5 w-3.5 text-success" />
             <span className="text-muted-foreground">
               Kill Switch: {status.killSwitchActive ? "✓" : "✗"} | DNS Protection:{" "}
-              {status.dnsProtectionActive ? "✓" : "✗"} | IP Obfuscation: {status.ipObfuscationActive ? "✓" : "✗"} |
-              Traffic Obfuscation: {status.trafficObfuscationActive ? "✓" : "✗"}
+              {status.dnsProtectionActive ? "✓" : "✗"} | IP: {status.ipObfuscationActive ? "masked" : "direct"} |
+              DNS: {status.dnsObfuscationActive ? "proxied" : "local"} | DHT:{" "}
+              {status.dhtInvisible ? "silent" : "visible"} | Upload: {status.sharingDisabled ? "blocked" : "open"}
             </span>
           </div>
 
@@ -542,8 +561,9 @@ export function SecurityStatusTicker() {
             <Shield className="h-3.5 w-3.5 text-success" />
             <span className="text-muted-foreground">
               Kill Switch: {status.killSwitchActive ? "✓" : "✗"} | DNS Protection:{" "}
-              {status.dnsProtectionActive ? "✓" : "✗"} | IP Obfuscation: {status.ipObfuscationActive ? "✓" : "✗"} |
-              Traffic Obfuscation: {status.trafficObfuscationActive ? "✓" : "✗"}
+              {status.dnsProtectionActive ? "✓" : "✗"} | IP: {status.ipObfuscationActive ? "masked" : "direct"} |
+              DNS: {status.dnsObfuscationActive ? "proxied" : "local"} | DHT:{" "}
+              {status.dhtInvisible ? "silent" : "visible"} | Upload: {status.sharingDisabled ? "blocked" : "open"}
             </span>
           </div>
 

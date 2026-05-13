@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -20,10 +21,13 @@ const (
 type SecurityConfig struct {
 	KillSwitchEnabled     bool   `json:"killSwitchEnabled"`
 	DNSProtectionEnabled  bool   `json:"dnsProtectionEnabled"`
+	DNSObfuscationEnabled bool   `json:"dnsObfuscationEnabled"`
 	IPObfuscationEnabled  bool   `json:"ipObfuscationEnabled"`
+	DHTInvisibility       bool   `json:"dhtInvisibility"`
+	SharingDisabled       bool   `json:"sharingDisabled"`
 	DataEncryptionEnabled bool   `json:"dataEncryptionEnabled"`
 	TorEnabled            bool   `json:"torEnabled"`
-	VPNType               string `json:"vpnType"` // "none", "vless", "outline"
+	VPNType               string `json:"vpnType"` // "none", "tor", "vless", "outline"
 	VLESSKey              string `json:"vlessKey"`
 	OutlineKey            string `json:"outlineKey"`
 	NoLogsMode            bool   `json:"noLogsMode"`
@@ -35,17 +39,69 @@ type SecurityConfig struct {
 	MACRandomization      bool   `json:"macRandomization"`
 	AntiFingerprint       bool   `json:"antiFingerprint"`
 	SecureDelete          bool   `json:"secureDelete"`
+	PeerVerification      bool   `json:"peerVerification"`
+	BlockMaliciousPeers   bool   `json:"blockMaliciousPeers"`
+	SandboxMode           bool   `json:"sandboxMode"`
+	MemoryEncryption      bool   `json:"memoryEncryption"`
+	AutoWipeOnExit        bool   `json:"autoWipeOnExit"`
+	StealthMode           bool   `json:"stealthMode"`
 }
 
 // SecurityStatus represents the current security status for monitoring
 type SecurityStatus struct {
-	KillSwitchActive         bool   `json:"killSwitchActive"`
-	DNSProtectionActive      bool   `json:"dnsProtectionActive"`
-	IPObfuscationActive      bool   `json:"ipObfuscationActive"`
-	TrafficObfuscationActive bool   `json:"trafficObfuscationActive"`
-	NoLogsMode               bool   `json:"noLogsMode"`
-	LeaksDetected            int    `json:"leaksDetected"`
-	LastCheck                string `json:"lastCheck"`
+	KillSwitchActive           bool   `json:"killSwitchActive"`
+	DNSProtectionActive        bool   `json:"dnsProtectionActive"`
+	DNSObfuscationActive       bool   `json:"dnsObfuscationActive"`
+	IPObfuscationActive        bool   `json:"ipObfuscationActive"`
+	DHTInvisible               bool   `json:"dhtInvisible"`
+	SharingDisabled            bool   `json:"sharingDisabled"`
+	TrafficObfuscationActive   bool   `json:"trafficObfuscationActive"`
+	DataEncryptionActive       bool   `json:"dataEncryptionActive"`
+	ForceEncryptionActive      bool   `json:"forceEncryptionActive"`
+	RejectPlaintextActive      bool   `json:"rejectPlaintextActive"`
+	NoLogsMode                 bool   `json:"noLogsMode"`
+	MACRandomizationActive     bool   `json:"macRandomizationActive"`
+	AntiFingerprintActive      bool   `json:"antiFingerprintActive"`
+	SecureDeleteActive         bool   `json:"secureDeleteActive"`
+	PeerVerificationActive     bool   `json:"peerVerificationActive"`
+	BlockMaliciousPeersActive  bool   `json:"blockMaliciousPeersActive"`
+	SandboxModeActive          bool   `json:"sandboxModeActive"`
+	MemoryEncryptionActive     bool   `json:"memoryEncryptionActive"`
+	AutoWipeOnExitActive       bool   `json:"autoWipeOnExitActive"`
+	StealthModeActive          bool   `json:"stealthModeActive"`
+	PeerExchangeDisabled       bool   `json:"peerExchangeDisabled"`
+	InboundConnectionsDisabled bool   `json:"inboundConnectionsDisabled"`
+	DirectPeerDialingDisabled  bool   `json:"directPeerDialingDisabled"`
+	UDPTrackersBlocked         bool   `json:"udpTrackersBlocked"`
+	ProxyRequired              bool   `json:"proxyRequired"`
+	ProxyAvailable             bool   `json:"proxyAvailable"`
+	ConnectionType             string `json:"connectionType"`
+	DownloadSpeed              int64  `json:"downloadSpeed"`
+	UploadSpeed                int64  `json:"uploadSpeed"`
+	SecurityScore              int    `json:"securityScore"`
+	LeaksDetected              int    `json:"leaksDetected"`
+	LastCheck                  string `json:"lastCheck"`
+}
+
+func boolSettingOrDefault(value string, fallback bool) bool {
+	if value == "" {
+		return fallback
+	}
+	return value == "true"
+}
+
+func connectionTypeFor(vpnType string, torEnabled bool) string {
+	if torEnabled || vpnType == "tor" {
+		return "Tor Multi-Proxy Chain"
+	}
+	switch vpnType {
+	case "vless":
+		return "VLESS VPN Connection"
+	case "outline":
+		return "Outline VPN Connection"
+	default:
+		return "Direct Connection"
+	}
 }
 
 // GetSecurityStatus returns current security status for monitoring
@@ -60,18 +116,69 @@ func (h *Handlers) GetSecurityStatus(w http.ResponseWriter, r *http.Request) {
 	obfuscateTraffic, _ := h.db.GetSetting("obfuscate_traffic")
 	killSwitchEnabled, _ := h.db.GetSetting("kill_switch_enabled")
 	dnsProtectionEnabled, _ := h.db.GetSetting("dns_protection_enabled")
+	dnsObfuscationEnabled, _ := h.db.GetSetting("dns_obfuscation_enabled")
 	ipObfuscationEnabled, _ := h.db.GetSetting("ip_obfuscation_enabled")
+	dhtInvisibility, _ := h.db.GetSetting("dht_invisibility")
+	sharingDisabled, _ := h.db.GetSetting("sharing_disabled")
+	dataEncryptionEnabled, _ := h.db.GetSetting("data_encryption_enabled")
+	forceEncryption, _ := h.db.GetSetting("force_encryption")
+	rejectPlaintext, _ := h.db.GetSetting("reject_plaintext")
+	macRandomization, _ := h.db.GetSetting("mac_randomization")
+	antiFingerprint, _ := h.db.GetSetting("anti_fingerprint")
+	secureDelete, _ := h.db.GetSetting("secure_delete")
+	peerVerification, _ := h.db.GetSetting("peer_verification")
+	blockMaliciousPeers, _ := h.db.GetSetting("block_malicious_peers")
+	sandboxMode, _ := h.db.GetSetting("sandbox_mode")
+	memoryEncryption, _ := h.db.GetSetting("memory_encryption")
+	autoWipeOnExit, _ := h.db.GetSetting("auto_wipe_on_exit")
+	stealthMode, _ := h.db.GetSetting("stealth_mode")
 
-	torEnabled := h.torrentClient.IsTorEnabled()
+	privacy := h.torrentClient.PrivacyStatus()
+	torrents := h.torrentClient.GetAllTorrents()
+	var downloadSpeed int64
+	var uploadSpeed int64
+	for _, item := range torrents {
+		downloadSpeed += item.DownloadSpeed
+		uploadSpeed += item.UploadSpeed
+	}
+	connectionType := connectionTypeFor(vpnType, h.torrentClient.IsTorEnabled())
+	if (vpnType == "tor" || h.torrentClient.IsTorEnabled()) && !privacy.ProxyAvailable {
+		connectionType = "Tor Proxy Unavailable"
+	}
 
 	status := SecurityStatus{
-		KillSwitchActive:         killSwitchEnabled == "true" || killSwitchEnabled == "",
-		DNSProtectionActive:      dnsProtectionEnabled == "true" || dnsProtectionEnabled == "",
-		IPObfuscationActive:      (ipObfuscationEnabled == "true" || ipObfuscationEnabled == "") && (torEnabled || vpnType != "none"),
-		TrafficObfuscationActive: obfuscateTraffic == "true",
-		NoLogsMode:               noLogsMode == "true",
-		LeaksDetected:            0,
-		LastCheck:                "",
+		KillSwitchActive:           boolSettingOrDefault(killSwitchEnabled, true),
+		DNSProtectionActive:        boolSettingOrDefault(dnsProtectionEnabled, true),
+		DNSObfuscationActive:       boolSettingOrDefault(dnsObfuscationEnabled, privacy.DNSObfuscation) && privacy.DNSObfuscation,
+		IPObfuscationActive:        boolSettingOrDefault(ipObfuscationEnabled, privacy.IPObfuscation) && (privacy.IPObfuscation || vpnType != "none"),
+		DHTInvisible:               boolSettingOrDefault(dhtInvisibility, true) || privacy.DHTInvisibility,
+		SharingDisabled:            boolSettingOrDefault(sharingDisabled, true) || privacy.SharingDisabled,
+		TrafficObfuscationActive:   obfuscateTraffic == "true",
+		DataEncryptionActive:       boolSettingOrDefault(dataEncryptionEnabled, true),
+		ForceEncryptionActive:      boolSettingOrDefault(forceEncryption, true),
+		RejectPlaintextActive:      boolSettingOrDefault(rejectPlaintext, true),
+		NoLogsMode:                 noLogsMode == "true",
+		MACRandomizationActive:     macRandomization == "true",
+		AntiFingerprintActive:      antiFingerprint == "true",
+		SecureDeleteActive:         boolSettingOrDefault(secureDelete, true),
+		PeerVerificationActive:     boolSettingOrDefault(peerVerification, true),
+		BlockMaliciousPeersActive:  boolSettingOrDefault(blockMaliciousPeers, true),
+		SandboxModeActive:          sandboxMode == "true",
+		MemoryEncryptionActive:     boolSettingOrDefault(memoryEncryption, true),
+		AutoWipeOnExitActive:       autoWipeOnExit == "true",
+		StealthModeActive:          stealthMode == "true",
+		PeerExchangeDisabled:       privacy.PeerExchangeDisabled,
+		InboundConnectionsDisabled: privacy.InboundConnectionsDisabled,
+		DirectPeerDialingDisabled:  privacy.DirectPeerDialingDisabled,
+		UDPTrackersBlocked:         privacy.UDPTrackersBlocked,
+		ProxyRequired:              privacy.ProxyRequired,
+		ProxyAvailable:             privacy.ProxyAvailable,
+		ConnectionType:             connectionType,
+		DownloadSpeed:              downloadSpeed,
+		UploadSpeed:                uploadSpeed,
+		SecurityScore:              calculateSecurityScore(h.db, h.torrentClient),
+		LeaksDetected:              0,
+		LastCheck:                  time.Now().UTC().Format(time.RFC3339),
 	}
 
 	h.writeJSON(w, http.StatusOK, status)
@@ -85,10 +192,20 @@ func (h *Handlers) GetSecurityConfig(w http.ResponseWriter, r *http.Request) {
 	if vpnType == "" {
 		vpnType = "none"
 	}
+	if h.torrentClient.IsTorEnabled() && vpnType == "none" {
+		vpnType = "tor"
+	}
 	vlessKey, _ := h.db.GetSetting("vless_key")
 	outlineKey, _ := h.db.GetSetting("outline_key")
+	killSwitch, _ := h.db.GetSetting("kill_switch_enabled")
+	dnsProtection, _ := h.db.GetSetting("dns_protection_enabled")
+	dataEncryption, _ := h.db.GetSetting("data_encryption_enabled")
 	noLogsMode, _ := h.db.GetSetting("no_logs_mode")
 	obfuscateTraffic, _ := h.db.GetSetting("obfuscate_traffic")
+	dnsObfuscation, _ := h.db.GetSetting("dns_obfuscation_enabled")
+	ipObfuscation, _ := h.db.GetSetting("ip_obfuscation_enabled")
+	dhtInvisibility, _ := h.db.GetSetting("dht_invisibility")
+	sharingDisabled, _ := h.db.GetSetting("sharing_disabled")
 
 	forceEncryption, _ := h.db.GetSetting("force_encryption")
 	encryptionLevel, _ := h.db.GetSetting("encryption_level")
@@ -103,12 +220,22 @@ func (h *Handlers) GetSecurityConfig(w http.ResponseWriter, r *http.Request) {
 	macRandomization, _ := h.db.GetSetting("mac_randomization")
 	antiFingerprint, _ := h.db.GetSetting("anti_fingerprint")
 	secureDelete, _ := h.db.GetSetting("secure_delete")
+	peerVerification, _ := h.db.GetSetting("peer_verification")
+	blockMaliciousPeers, _ := h.db.GetSetting("block_malicious_peers")
+	sandboxMode, _ := h.db.GetSetting("sandbox_mode")
+	memoryEncryption, _ := h.db.GetSetting("memory_encryption")
+	autoWipeOnExit, _ := h.db.GetSetting("auto_wipe_on_exit")
+	stealthMode, _ := h.db.GetSetting("stealth_mode")
+	privacy := h.torrentClient.PrivacyStatus()
 
 	config := SecurityConfig{
-		KillSwitchEnabled:     true,
-		DNSProtectionEnabled:  true,
-		IPObfuscationEnabled:  true,
-		DataEncryptionEnabled: true,
+		KillSwitchEnabled:     boolSettingOrDefault(killSwitch, true),
+		DNSProtectionEnabled:  boolSettingOrDefault(dnsProtection, true),
+		DNSObfuscationEnabled: boolSettingOrDefault(dnsObfuscation, privacy.DNSObfuscation),
+		IPObfuscationEnabled:  boolSettingOrDefault(ipObfuscation, privacy.IPObfuscation),
+		DHTInvisibility:       dhtInvisibility == "true" || dhtInvisibility == "",
+		SharingDisabled:       sharingDisabled == "true" || sharingDisabled == "",
+		DataEncryptionEnabled: boolSettingOrDefault(dataEncryption, true),
 		TorEnabled:            h.torrentClient.IsTorEnabled(),
 		VPNType:               vpnType,
 		VLESSKey:              vlessKey,
@@ -122,6 +249,12 @@ func (h *Handlers) GetSecurityConfig(w http.ResponseWriter, r *http.Request) {
 		MACRandomization:      macRandomization == "true",
 		AntiFingerprint:       antiFingerprint == "true",
 		SecureDelete:          secureDelete == "true" || secureDelete == "",
+		PeerVerification:      boolSettingOrDefault(peerVerification, true),
+		BlockMaliciousPeers:   boolSettingOrDefault(blockMaliciousPeers, true),
+		SandboxMode:           sandboxMode == "true",
+		MemoryEncryption:      boolSettingOrDefault(memoryEncryption, true),
+		AutoWipeOnExit:        autoWipeOnExit == "true",
+		StealthMode:           stealthMode == "true",
 	}
 
 	h.writeJSON(w, http.StatusOK, config)
@@ -138,14 +271,24 @@ func (h *Handlers) UpdateSecuritySettings(w http.ResponseWriter, r *http.Request
 	if config.VPNType == "" {
 		config.VPNType = "none"
 	}
-	if config.VPNType != "none" && config.VPNType != "vless" && config.VPNType != "outline" {
+	if config.VPNType != "none" && config.VPNType != "tor" && config.VPNType != "vless" && config.VPNType != "outline" {
 		h.writeError(w, http.StatusBadRequest, "Unsupported VPN type")
 		return
+	}
+	config.TorEnabled = config.VPNType == "tor"
+	if config.NoLogsMode {
+		config.DHTInvisibility = true
+		config.SharingDisabled = true
+		config.SecureDelete = true
 	}
 
 	h.logger.Info("Updating security settings",
 		zap.Bool("killSwitch", config.KillSwitchEnabled),
 		zap.Bool("dnsProtection", config.DNSProtectionEnabled),
+		zap.Bool("dnsObfuscation", config.DNSObfuscationEnabled),
+		zap.Bool("ipObfuscation", config.IPObfuscationEnabled),
+		zap.Bool("dhtInvisibility", config.DHTInvisibility),
+		zap.Bool("sharingDisabled", config.SharingDisabled),
 		zap.Bool("torEnabled", config.TorEnabled),
 		zap.String("vpnType", config.VPNType),
 		zap.Bool("noLogsMode", config.NoLogsMode),
@@ -157,6 +300,12 @@ func (h *Handlers) UpdateSecuritySettings(w http.ResponseWriter, r *http.Request
 		zap.Bool("macRandomization", config.MACRandomization),
 		zap.Bool("antiFingerprint", config.AntiFingerprint),
 		zap.Bool("secureDelete", config.SecureDelete),
+		zap.Bool("peerVerification", config.PeerVerification),
+		zap.Bool("blockMaliciousPeers", config.BlockMaliciousPeers),
+		zap.Bool("sandboxMode", config.SandboxMode),
+		zap.Bool("memoryEncryption", config.MemoryEncryption),
+		zap.Bool("autoWipeOnExit", config.AutoWipeOnExit),
+		zap.Bool("stealthMode", config.StealthMode),
 	)
 
 	// Update Tor status
@@ -169,7 +318,10 @@ func (h *Handlers) UpdateSecuritySettings(w http.ResponseWriter, r *http.Request
 	// Store all settings in database
 	h.db.SetSetting("kill_switch_enabled", fmt.Sprintf("%t", config.KillSwitchEnabled))
 	h.db.SetSetting("dns_protection_enabled", fmt.Sprintf("%t", config.DNSProtectionEnabled))
+	h.db.SetSetting("dns_obfuscation_enabled", fmt.Sprintf("%t", config.DNSObfuscationEnabled))
 	h.db.SetSetting("ip_obfuscation_enabled", fmt.Sprintf("%t", config.IPObfuscationEnabled))
+	h.db.SetSetting("dht_invisibility", fmt.Sprintf("%t", config.DHTInvisibility))
+	h.db.SetSetting("sharing_disabled", fmt.Sprintf("%t", config.SharingDisabled))
 	h.db.SetSetting("data_encryption_enabled", fmt.Sprintf("%t", config.DataEncryptionEnabled))
 	h.db.SetSetting("tor_enabled", fmt.Sprintf("%t", config.TorEnabled))
 
@@ -193,6 +345,12 @@ func (h *Handlers) UpdateSecuritySettings(w http.ResponseWriter, r *http.Request
 	h.db.SetSetting("mac_randomization", fmt.Sprintf("%t", config.MACRandomization))
 	h.db.SetSetting("anti_fingerprint", fmt.Sprintf("%t", config.AntiFingerprint))
 	h.db.SetSetting("secure_delete", fmt.Sprintf("%t", config.SecureDelete))
+	h.db.SetSetting("peer_verification", fmt.Sprintf("%t", config.PeerVerification))
+	h.db.SetSetting("block_malicious_peers", fmt.Sprintf("%t", config.BlockMaliciousPeers))
+	h.db.SetSetting("sandbox_mode", fmt.Sprintf("%t", config.SandboxMode))
+	h.db.SetSetting("memory_encryption", fmt.Sprintf("%t", config.MemoryEncryption))
+	h.db.SetSetting("auto_wipe_on_exit", fmt.Sprintf("%t", config.AutoWipeOnExit))
+	h.db.SetSetting("stealth_mode", fmt.Sprintf("%t", config.StealthMode))
 
 	if config.NoLogsMode {
 		h.logger.Info("No-logs mode enabled - disabling DHT and metadata persistence")
@@ -208,8 +366,23 @@ func (h *Handlers) UpdateSecuritySettings(w http.ResponseWriter, r *http.Request
 		h.torrentClient.SetTrafficObfuscation(false)
 	}
 
+	actualIPObfuscation := h.torrentClient.SetIPObfuscation(config.IPObfuscationEnabled)
+	actualDNSObfuscation := h.torrentClient.SetDNSObfuscation(config.DNSObfuscationEnabled)
+	h.torrentClient.SetDHTInvisibility(config.DHTInvisibility)
+	h.torrentClient.SetSharingDisabled(config.SharingDisabled)
+	_ = h.db.SetSetting("ip_obfuscation_enabled", fmt.Sprintf("%t", actualIPObfuscation))
+	_ = h.db.SetSetting("dns_obfuscation_enabled", fmt.Sprintf("%t", actualDNSObfuscation))
+
 	if config.ForceEncryption {
 		h.logger.Info("Force encryption enabled - all unencrypted connections will be rejected")
+	}
+
+	if config.DHTInvisibility {
+		h.logger.Info("DHT invisibility enabled - DHT announce/query participation and PEX remain disabled")
+	}
+
+	if config.SharingDisabled {
+		h.logger.Info("Sharing disabled - torrent data upload and seeding are blocked")
 	}
 
 	if config.MACRandomization {
@@ -251,21 +424,21 @@ func (h *Handlers) GetIPStatus(w http.ResponseWriter, r *http.Request) {
 		vpnType = "none"
 	}
 
-	connectionType := "Direct Connection"
-	if torEnabled {
-		connectionType = "Tor Multi-Proxy Chain"
-	} else if vpnType == "vless" {
-		connectionType = "VLESS VPN Connection"
-	} else if vpnType == "outline" {
-		connectionType = "Outline VPN Connection"
+	privacy := h.torrentClient.PrivacyStatus()
+	connectionType := connectionTypeFor(vpnType, torEnabled)
+	if (vpnType == "tor" || torEnabled) && !privacy.ProxyAvailable {
+		connectionType = "Tor Proxy Unavailable"
 	}
-
 	status := map[string]interface{}{
-		"torEnabled":     torEnabled,
-		"vpnType":        vpnType,
-		"ipObfuscated":   torEnabled || vpnType != "none",
-		"dnsProtected":   true,
-		"connectionType": connectionType,
+		"torEnabled":         torEnabled,
+		"vpnType":            vpnType,
+		"ipObfuscated":       privacy.IPObfuscation || vpnType != "none",
+		"dnsProtected":       true,
+		"dnsObfuscated":      privacy.DNSObfuscation,
+		"dhtInvisible":       privacy.DHTInvisibility,
+		"sharingDisabled":    privacy.SharingDisabled,
+		"udpTrackersBlocked": privacy.UDPTrackersBlocked,
+		"connectionType":     connectionType,
 	}
 
 	h.writeJSON(w, http.StatusOK, status)

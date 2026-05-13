@@ -8,6 +8,7 @@ const elements = {
   revealFile: document.getElementById("reveal-file"),
   forgetFile: document.getElementById("forget-file"),
   copyHash: document.getElementById("copy-hash"),
+  copyReport: document.getElementById("copy-report"),
   fileList: document.getElementById("file-list"),
   runtimeInfo: document.getElementById("runtime-info"),
   emptyState: document.getElementById("empty-state"),
@@ -18,9 +19,11 @@ const elements = {
   metaSize: document.getElementById("meta-size"),
   metaSignature: document.getElementById("meta-signature"),
   metaEntropy: document.getElementById("meta-entropy"),
+  metaRisk: document.getElementById("meta-risk"),
   metaDirectory: document.getElementById("meta-directory"),
   metaModified: document.getElementById("meta-modified"),
   metaMode: document.getElementById("meta-mode"),
+  metaMime: document.getElementById("meta-mime"),
   metaSha: document.getElementById("meta-sha"),
   preview: document.getElementById("preview"),
   textSearch: document.getElementById("text-search"),
@@ -78,6 +81,13 @@ elements.copyHash.addEventListener("click", async () => {
   if (!file?.sha256) return
   await navigator.clipboard.writeText(file.sha256)
   showToast("SHA-256 copied")
+})
+
+elements.copyReport.addEventListener("click", async () => {
+  const file = selectedFile()
+  if (!file) return
+  await navigator.clipboard.writeText(createSafetyReport(file))
+  showToast("Safety report copied")
 })
 
 elements.textSearch.addEventListener("input", renderPreview)
@@ -140,6 +150,7 @@ function render() {
   elements.revealFile.disabled = !hasFile
   elements.forgetFile.disabled = !hasFile
   elements.copyHash.disabled = !hasFile || !file?.sha256
+  elements.copyReport.disabled = !hasFile || Boolean(file?.error)
 
   if (!file) {
     elements.fileTitle.textContent = "No file selected"
@@ -152,9 +163,12 @@ function render() {
   elements.metaSize.textContent = formatBytes(file.size)
   elements.metaSignature.textContent = file.signature || "Unknown"
   elements.metaEntropy.textContent = `${file.entropy} bits/byte`
+  elements.metaRisk.textContent = `${capitalize(file.riskLevel || "unknown")} (${Number(file.riskScore) || 0}/100)`
+  elements.metaRisk.dataset.level = file.riskLevel || "unknown"
   elements.metaDirectory.textContent = file.directory
   elements.metaModified.textContent = new Date(file.modified).toLocaleString()
   elements.metaMode.textContent = file.mode
+  elements.metaMime.textContent = file.mimeType || "application/octet-stream"
   elements.metaSha.textContent = file.sha256
 
   elements.warningRow.replaceChildren()
@@ -212,7 +226,7 @@ function renderPreview() {
   if (file.group === "image") {
     const img = document.createElement("img")
     img.alt = file.name
-    img.src = toFileUrl(file.path)
+    img.src = file.previewUrl
     elements.preview.appendChild(img)
     return
   }
@@ -220,7 +234,7 @@ function renderPreview() {
   if (file.group === "audio") {
     const audio = document.createElement("audio")
     audio.controls = true
-    audio.src = toFileUrl(file.path)
+    audio.src = file.previewUrl
     elements.preview.appendChild(audio)
     return
   }
@@ -228,7 +242,7 @@ function renderPreview() {
   if (file.group === "video") {
     const video = document.createElement("video")
     video.controls = true
-    video.src = toFileUrl(file.path)
+    video.src = file.previewUrl
     elements.preview.appendChild(video)
     return
   }
@@ -267,16 +281,6 @@ function createPill(text, warning = false) {
   return pill
 }
 
-function toFileUrl(filePath) {
-  const normalized = filePath.replace(/\\/g, "/")
-  if (/^[a-zA-Z]:\//.test(normalized)) {
-    const [drive, ...parts] = normalized.split("/")
-    return `file:///${drive}/${parts.map(encodeURIComponent).join("/")}`
-  }
-  const prefix = normalized.startsWith("/") ? "file://" : "file:///"
-  return prefix + normalized.split("/").map(encodeURIComponent).join("/")
-}
-
 function countMatches(text, query) {
   if (!query) return 0
   let count = 0
@@ -288,6 +292,26 @@ function countMatches(text, query) {
     index += lowerQuery.length || 1
   }
   return count
+}
+
+function createSafetyReport(file) {
+  return [
+    `B2 Safe File Viewer report`,
+    `Name: ${file.name}`,
+    `Path: ${file.path}`,
+    `Size: ${formatBytes(file.size)}`,
+    `Signature: ${file.signature || "Unknown"}`,
+    `MIME: ${file.mimeType || "application/octet-stream"}`,
+    `Risk: ${capitalize(file.riskLevel || "unknown")} (${Number(file.riskScore) || 0}/100)`,
+    `Entropy: ${file.entropy} bits/byte`,
+    `SHA-256: ${file.sha256}`,
+    `Warnings: ${file.warnings?.length ? file.warnings.join("; ") : "No obvious local indicators"}`,
+  ].join("\n")
+}
+
+function capitalize(value) {
+  const text = String(value || "")
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : ""
 }
 
 function formatBytes(value) {

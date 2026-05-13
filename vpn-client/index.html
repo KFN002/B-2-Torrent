@@ -96,6 +96,19 @@
         </div>
       </section>
 
+      <section class="panel safety-panel">
+        <div class="section-heading">
+          <h2>Safety Audit</h2>
+          <button class="button small secondary" id="refreshAuditBtn" type="button">Refresh</button>
+        </div>
+        <div class="audit-score">
+          <strong id="auditScore">N/A</strong>
+          <span id="auditLevel">Not checked</span>
+        </div>
+        <p class="muted audit-summary" id="auditSummary">Waiting for local settings.</p>
+        <div id="auditFindings" class="audit-list"></div>
+      </section>
+
       <section class="panel servers-panel">
         <div class="section-heading">
           <h2>Servers</h2>

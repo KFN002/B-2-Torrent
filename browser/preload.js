@@ -27,10 +27,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   tabGoForward: (tabId) => ipcRenderer.invoke("tab-go-forward", tabId),
   tabReload: (tabId) => ipcRenderer.invoke("tab-reload", tabId),
   tabStop: (tabId) => ipcRenderer.invoke("tab-stop", tabId),
-  onTabLoading: (callback) => ipcRenderer.on("tab-loading", (event, data) => callback(data)),
-  onTabUpdated: (callback) => ipcRenderer.on("tab-updated", (event, data) => callback(data)),
-  onTabTitleUpdated: (callback) => ipcRenderer.on("tab-title-updated", (event, data) => callback(data)),
-  onTabSwitched: (callback) => ipcRenderer.on("tab-switched", (event, data) => callback(data)),
-  onTabClosed: (callback) => ipcRenderer.on("tab-closed", (event, data) => callback(data)),
-  onAllTabsClosed: (callback) => ipcRenderer.on("all-tabs-closed", () => callback()),
+  onTabLoading: (callback) => subscribe("tab-loading", callback),
+  onTabUpdated: (callback) => subscribe("tab-updated", callback),
+  onTabTitleUpdated: (callback) => subscribe("tab-title-updated", callback),
+  onTabSwitched: (callback) => subscribe("tab-switched", callback),
+  onTabClosed: (callback) => subscribe("tab-closed", callback),
+  onAllTabsClosed: (callback) => subscribe("all-tabs-closed", callback),
 })
+
+function subscribe(channel, callback) {
+  if (typeof callback !== "function") return () => {}
+  const listener = (_event, data) => callback(data)
+  ipcRenderer.on(channel, listener)
+  return () => ipcRenderer.removeListener(channel, listener)
+}

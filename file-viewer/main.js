@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, session, shell } = require("electron")
+const { app, BrowserWindow, Menu, dialog, ipcMain, session, shell, protocol } = require("electron")
 const crypto = require("crypto")
 const fs = require("fs")
 const fsp = fs.promises
@@ -26,8 +26,17 @@ const PREVIEW_BYTES = 128 * 1024
 const HEX_BYTES = 1024
 const DELETE_CONFIRMATION_MAX_PASSES = 35
 
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "b2safe-file",
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true },
+  },
+])
+
 let mainWindow
 const knownFiles = new Map()
+const previewTokensByPath = new Map()
+const previewFilesByToken = new Map()
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -61,7 +70,7 @@ async function configureSession() {
         ...details.responseHeaders,
         "Cache-Control": ["no-store"],
         "Content-Security-Policy": [
-          "default-src 'self' file: blob: data:; script-src 'self'; style-src 'self'; img-src 'self' file: data: blob:; media-src 'self' file: data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+          "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' b2safe-file: data: blob:; media-src 'self' b2safe-file: data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
         ],
         "Permissions-Policy": ["camera=(), microphone=(), geolocation=(), usb=(), payment=()"],
         "Referrer-Policy": ["no-referrer"],
@@ -74,7 +83,25 @@ async function configureSession() {
   await defaultSession.clearCache()
 }
 
+function configurePreviewProtocol() {
+  protocol.registerFileProtocol("b2safe-file", (request, callback) => {
+    try {
+      const parsed = new URL(request.url)
+      const token = decodeURIComponent(parsed.pathname.replace(/^\/+/, ""))
+      const safePath = previewFilesByToken.get(token)
+      if (!safePath || !knownFiles.has(safePath)) {
+        callback({ error: -6 })
+        return
+      }
+      callback({ path: safePath })
+    } catch {
+      callback({ error: -2 })
+    }
+  })
+}
+
 app.whenReady().then(async () => {
+  configurePreviewProtocol()
   await configureSession()
   createWindow()
 
@@ -122,7 +149,7 @@ ipcMain.handle("files:reveal", async (_event, filePath) => {
 
 ipcMain.handle("files:forget", async (_event, filePath) => {
   const safePath = await resolveKnownFile(filePath)
-  knownFiles.delete(safePath)
+  forgetKnownFile(safePath)
   return { ok: true, path: safePath }
 })
 
@@ -148,7 +175,7 @@ ipcMain.handle("files:delete", async (_event, payload) => {
     await overwriteAndUnlink(safePath, passes)
   }
 
-  knownFiles.delete(safePath)
+  forgetKnownFile(safePath)
   return { ok: true, path: safePath, mode, passes }
 })
 
@@ -180,9 +207,11 @@ async function analyzeFile(filePath) {
   const signature = detectSignature(sample)
   const extension = path.extname(realPath).toLowerCase()
   const group = classifyFile(signature, extension, sample)
+  const mimeType = detectMimeType(signature, extension, group)
   const sha256 = await sha256File(realPath)
   const entropy = calculateEntropy(sample)
   const warnings = buildWarnings({ realPath, signature, extension, sample, entropy })
+  const risk = scoreFileRisk({ signature, extension, group, warnings, entropy })
 
   return {
     path: realPath,
@@ -194,9 +223,13 @@ async function analyzeFile(filePath) {
     mode: stat.mode.toString(8),
     sha256,
     signature,
+    mimeType,
     group,
     entropy: Number(entropy.toFixed(3)),
+    riskScore: risk.score,
+    riskLevel: risk.level,
     warnings,
+    previewUrl: previewUrlForPath(realPath),
     textPreview: group === "text" ? decodeTextPreview(sample) : "",
     hexPreview: toHexDump(sample.subarray(0, HEX_BYTES)),
   }
@@ -211,6 +244,25 @@ async function resolveKnownFile(filePath) {
     throw new Error("File must be opened in this session before file operations are allowed")
   }
   return realPath
+}
+
+function previewUrlForPath(realPath) {
+  let token = previewTokensByPath.get(realPath)
+  if (!token) {
+    token = crypto.randomUUID()
+    previewTokensByPath.set(realPath, token)
+    previewFilesByToken.set(token, realPath)
+  }
+  return `b2safe-file://preview/${encodeURIComponent(token)}`
+}
+
+function forgetKnownFile(realPath) {
+  knownFiles.delete(realPath)
+  const token = previewTokensByPath.get(realPath)
+  if (token) {
+    previewFilesByToken.delete(token)
+    previewTokensByPath.delete(realPath)
+  }
 }
 
 async function readSample(filePath, maxBytes) {
@@ -271,6 +323,32 @@ function classifyFile(signature, extension, sample) {
   if (signature.includes("executable") || signature.includes("ELF") || signature.includes("Mach-O")) return "executable"
   if (isLikelyText(sample, extension)) return "text"
   return "binary"
+}
+
+function detectMimeType(signature, extension, group) {
+  const bySignature = {
+    "PNG image": "image/png",
+    "JPEG image": "image/jpeg",
+    "GIF image": "image/gif",
+    "PDF document": "application/pdf",
+    "ZIP archive": "application/zip",
+    "7-Zip archive": "application/x-7z-compressed",
+    "RAR archive": "application/vnd.rar",
+    "Gzip archive": "application/gzip",
+    "MP4 video": "video/mp4",
+    "MPEG video": "video/mpeg",
+    "MP3 audio": "audio/mpeg",
+    "Ogg media": "application/ogg",
+    "WebP image": "image/webp",
+    "WAV audio": "audio/wav",
+    "SQLite database": "application/vnd.sqlite3",
+  }
+  if (bySignature[signature]) return bySignature[signature]
+  if (extension === ".svg") return "image/svg+xml"
+  if (extension === ".html" || extension === ".htm") return "text/html"
+  if (extension === ".json") return "application/json"
+  if (group === "text") return "text/plain"
+  return "application/octet-stream"
 }
 
 function isLikelyText(buffer, extension) {
@@ -376,6 +454,27 @@ function buildWarnings({ realPath, signature, extension, sample, entropy }) {
     warnings.push("High entropy; file may be compressed, encrypted, or packed")
   }
   return warnings
+}
+
+function scoreFileRisk({ signature, extension, group, warnings, entropy }) {
+  let score = 0
+
+  if (group === "executable") score += 85
+  if (group === "archive") score += 25
+  if (signature === "Unknown") score += 18
+  if (entropy > 7.5) score += 15
+  if (extension === ".svg" || extension === ".html" || extension === ".htm") score += 30
+
+  for (const warning of warnings) {
+    if (warning.includes("Executable")) score += 35
+    else if (warning.includes("Double extension")) score += 25
+    else if (warning.includes("High entropy")) score += 12
+    else score += 8
+  }
+
+  score = Math.min(100, score)
+  const level = score >= 75 ? "high" : score >= 40 ? "medium" : score >= 15 ? "low" : "minimal"
+  return { score, level }
 }
 
 function toHexDump(buffer) {

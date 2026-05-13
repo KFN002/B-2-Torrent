@@ -18,6 +18,10 @@ const settingsBtn = document.getElementById("settings-btn")
 const aboutBtn = document.getElementById("about-btn")
 const saveBrowserSettingsBtn = document.getElementById("save-browser-settings-btn")
 const cancelBrowserSettingsBtn = document.getElementById("cancel-browser-settings-btn")
+const browserProtectionSummary = document.getElementById("browser-protection-summary")
+const browserProtectionRoute = document.getElementById("browser-protection-route")
+const browserProtectionFlow = document.getElementById("browser-protection-flow")
+const browserProtectionSignals = document.getElementById("browser-protection-signals")
 const b2SearchCard = document.getElementById("b2-search-card")
 const closeSearchBtn = document.getElementById("close-search")
 const searchSettingsBtn = document.getElementById("search-settings-btn")
@@ -62,6 +66,18 @@ const blockMalware = document.getElementById("blockMalware")
 const blockSocial = document.getElementById("blockSocial")
 const blockFingerprinting = document.getElementById("blockFingerprinting")
 const clearOnExit = document.getElementById("clearOnExit")
+
+const browserSettingInputs = [
+  "blockAds",
+  "blockTrackers",
+  "blockMalware",
+  "blockSocial",
+  "blockFingerprinting",
+  "httpsOnlyMode",
+  "blockDownloads",
+  "blockPopups",
+  "clearOnExit",
+]
 
 async function createNewTab(url = null) {
   const result = await window.electronAPI.createTab(url)
@@ -129,10 +145,10 @@ async function closeTab(tabId) {
 function updateSecurityStatus() {
   if (securityStatus) {
     securityStatus.innerHTML = `
-      <span class="status-item">🔒 Encrypted</span>
-      <span class="status-item">🚫 No Logs</span>
-      <span class="status-item">👻 Stealth Mode</span>
-      <span class="status-item">🛡️ Anti-Fingerprint</span>
+      <span class="status-item"><span class="status-dot active"></span> HTTPS guard</span>
+      <span class="status-item"><span class="status-dot active"></span> Ephemeral session</span>
+      <span class="status-item"><span class="status-dot active"></span> Fingerprint shield</span>
+      <span class="status-item"><span class="status-dot active"></span> Local-only history</span>
     `
   }
 }
@@ -142,10 +158,10 @@ async function updateBlockStats() {
 
   const stats = await window.electronAPI.getBlockStats()
   blockStatsDisplay.innerHTML = `
-    <span class="status-item">🚫 ${stats.total} Blocked</span>
-    <span class="status-item" title="Ads blocked">📢 ${stats.ads} Ads</span>
-    <span class="status-item" title="Trackers blocked">👁️ ${stats.trackers} Trackers</span>
-    <span class="status-item" title="Malware blocked">🦠 ${stats.malware} Malware</span>
+    <span class="status-item"><span class="status-dot active"></span>${stats.total} blocked</span>
+    <span class="status-item" title="Ads blocked">Ads ${stats.ads}</span>
+    <span class="status-item" title="Trackers blocked">Trackers ${stats.trackers}</span>
+    <span class="status-item" title="Malware blocked">Malware ${stats.malware}</span>
   `
 }
 
@@ -310,10 +326,11 @@ saveProxyBtn.addEventListener("click", async () => {
   proxyModal.classList.add("hidden")
 
   if (config.enabled) {
-    proxyStatus.textContent = `🌐 Proxy: ${config.type.toUpperCase()} ${config.host}:${config.port}`
+    proxyStatus.textContent = `Proxy: ${config.type.toUpperCase()} ${config.host}:${config.port}`
   } else {
     proxyStatus.textContent = "No Proxy"
   }
+  renderBrowserProtection()
 
   alert("Proxy settings saved. Please reload the page for changes to take effect.")
 })
@@ -347,8 +364,9 @@ document.querySelectorAll(".engine-card").forEach((card) => {
 ;(async () => {
   const config = await window.electronAPI.getProxy()
   if (config && config.enabled) {
-    proxyStatus.textContent = `🌐 Proxy: ${config.type.toUpperCase()} ${config.host}:${config.port}`
+    proxyStatus.textContent = `Proxy: ${config.type.toUpperCase()} ${config.host}:${config.port}`
   }
+  renderBrowserProtection()
   await refreshTabList()
 })()
 
@@ -365,7 +383,11 @@ async function loadBrowserSettings() {
   document.getElementById("blockMalware").checked = settings.blockMalware
   document.getElementById("blockSocial").checked = settings.blockSocial
   document.getElementById("blockFingerprinting").checked = settings.blockFingerprinting
+  document.getElementById("httpsOnlyMode").checked = settings.httpsOnlyMode
+  document.getElementById("blockDownloads").checked = settings.blockDownloads
+  document.getElementById("blockPopups").checked = settings.blockPopups
   document.getElementById("clearOnExit").checked = settings.clearOnExit
+  renderBrowserProtection(settings)
 }
 
 async function saveBrowserSettings() {
@@ -375,8 +397,11 @@ async function saveBrowserSettings() {
     blockMalware: document.getElementById("blockMalware").checked,
     blockSocial: document.getElementById("blockSocial").checked,
     blockFingerprinting: document.getElementById("blockFingerprinting").checked,
+    httpsOnlyMode: document.getElementById("httpsOnlyMode").checked,
+    blockDownloads: document.getElementById("blockDownloads").checked,
+    blockPopups: document.getElementById("blockPopups").checked,
     clearOnExit: document.getElementById("clearOnExit").checked,
-    antiFingerprint: true,
+    antiFingerprint: document.getElementById("blockFingerprinting").checked,
     secureHeaders: true,
     noHistory: true,
     noCache: true,
@@ -386,6 +411,71 @@ async function saveBrowserSettings() {
   document.getElementById("browserSettingsModal").style.display = "none"
   alert("Settings saved! Reload for changes to take effect.")
 }
+
+function readBrowserSettingsFromForm() {
+  return {
+    blockAds: blockAds.checked,
+    blockTrackers: blockTrackers.checked,
+    blockMalware: blockMalware.checked,
+    blockSocial: blockSocial.checked,
+    blockFingerprinting: blockFingerprinting.checked,
+    httpsOnlyMode: document.getElementById("httpsOnlyMode").checked,
+    blockDownloads: document.getElementById("blockDownloads").checked,
+    blockPopups: document.getElementById("blockPopups").checked,
+    clearOnExit: clearOnExit.checked,
+  }
+}
+
+function renderBrowserProtection(settings = readBrowserSettingsFromForm()) {
+  if (!browserProtectionFlow || !browserProtectionSignals) return
+
+  const activeCount = browserSettingInputs.filter((id) => document.getElementById(id)?.checked).length
+  const proxyActive = proxyEnabled?.checked || proxyStatus?.textContent?.startsWith("Proxy:")
+  const flow = [
+    ["Request", true],
+    ["HTTPS", settings.httpsOnlyMode],
+    ["Ads", settings.blockAds],
+    ["Trackers", settings.blockTrackers],
+    ["Fingerprint", settings.blockFingerprinting],
+    ["Session", settings.clearOnExit],
+  ]
+  const signals = [
+    ["Proxy", proxyActive ? "configured" : "direct", Boolean(proxyActive)],
+    ["Downloads", settings.blockDownloads ? "blocked" : "allowed", settings.blockDownloads],
+    ["Popups", settings.blockPopups ? "blocked" : "allowed", settings.blockPopups],
+    ["Malware", settings.blockMalware ? "blocked" : "allowed", settings.blockMalware],
+    ["Social Widgets", settings.blockSocial ? "blocked" : "allowed", settings.blockSocial],
+    ["Data", settings.clearOnExit ? "ephemeral" : "persistent", settings.clearOnExit],
+  ]
+
+  browserProtectionSummary.textContent = `${activeCount}/${browserSettingInputs.length} browser protections enabled`
+  browserProtectionRoute.textContent = proxyActive ? "Proxy route" : "Direct route"
+  browserProtectionFlow.innerHTML = flow
+    .map(
+      ([label, active]) => `
+        <div class="flow-node ${active ? "active" : ""}">
+          <span class="status-dot ${active ? "active" : ""}"></span>
+          <strong>${escapeHTML(label)}</strong>
+          <small>${active ? "active" : "off"}</small>
+        </div>
+      `,
+    )
+    .join("")
+  browserProtectionSignals.innerHTML = signals
+    .map(
+      ([label, value, active]) => `
+        <div class="signal-row ${active ? "active" : ""}">
+          <span>${escapeHTML(label)}</span>
+          <strong>${escapeHTML(value)}</strong>
+        </div>
+      `,
+    )
+    .join("")
+}
+
+browserSettingInputs.forEach((id) => {
+  document.getElementById(id)?.addEventListener("change", () => renderBrowserProtection())
+})
 
 if (saveBrowserSettingsBtn) {
   saveBrowserSettingsBtn.addEventListener("click", saveBrowserSettings)

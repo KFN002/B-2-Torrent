@@ -1322,6 +1322,66 @@ function getStatusPayload() {
   }
 }
 
+function getSafetyReport() {
+  const findings = []
+  let score = 100
+
+  const addFinding = (severity, title, detail, penalty) => {
+    findings.push({ severity, title, detail })
+    score -= penalty
+  }
+
+  if (settings.killSwitchMode === "off") {
+    addFinding("high", "Kill switch is off", "Traffic may continue outside the protected route after failures.", 25)
+  } else if (settings.killSwitchMode === "app") {
+    addFinding("medium", "Kill switch is app-only", "System traffic outside this app will not be blocked during route loss.", 12)
+  }
+
+  if (settings.allowLan) {
+    addFinding("high", "Local proxy accepts LAN clients", "Other devices on the network may use this proxy if they can reach the machine.", 20)
+  }
+  if (settings.allowInsecureTransport) {
+    addFinding("high", "Weak/plain transports allowed", "Plain HTTP proxies and weak VMess or Shadowsocks settings can be used.", 25)
+  }
+  if (!settings.blockPrivateDestinations) {
+    addFinding("medium", "Private destination blocking is off", "Proxy clients can request loopback or private network addresses.", 12)
+  }
+  if (!settings.dnsProtection) {
+    addFinding("medium", "DNS protection is off", "DNS requests may use the system resolver outside the intended route.", 12)
+  }
+  if (settings.ipv6Mode === "unchanged") {
+    addFinding("low", "IPv6 is unchanged", "IPv6 privacy depends on the host operating system configuration.", 6)
+  }
+  if (settings.saveSecrets && !safeStorage.isEncryptionAvailable()) {
+    addFinding("high", "Secret storage unavailable", "Saved server secrets cannot be protected by the OS keychain/keyring.", 25)
+  } else if (settings.saveSecrets) {
+    addFinding("low", "Secrets can be saved", "Saved secrets use OS encryption, but disabling persistence still reduces local exposure.", 5)
+  }
+  if (activeConfig?.type === "http") {
+    addFinding("high", "Active upstream is HTTP", "The upstream proxy control channel is not encrypted.", 20)
+  }
+  if (settings.connectionMode === "tun" && settings.tun.helper === "custom" && !settings.tun.helperPath) {
+    addFinding("medium", "Custom TUN helper missing", "TUN mode will fail closed until an absolute helper path is configured.", 10)
+  }
+  if (!connectionStatus.connected) {
+    findings.push({ severity: "info", title: "Route is inactive", detail: "Connect to a saved server or quick link before relying on this route." })
+  }
+
+  score = Math.max(0, Math.min(100, score))
+  const level = score >= 85 ? "strong" : score >= 65 ? "good" : score >= 40 ? "caution" : "risky"
+
+  return {
+    score,
+    level,
+    generatedAt: new Date().toISOString(),
+    summary:
+      findings.filter((finding) => finding.severity !== "info").length === 0
+        ? "No risky local settings detected."
+        : "Review the highlighted settings before relying on this route.",
+    findings,
+  }
+}
+
 ipcMain.handle("connect-vpn", async (_event, config) => connectToVPN(config))
 ipcMain.handle("disconnect-vpn", () => {
   disconnect({ manual: true })
@@ -1384,6 +1444,7 @@ ipcMain.handle("save-settings", (_event, incomingSettings) => {
     return { success: false, error: error.message }
   }
 })
+ipcMain.handle("get-safety-report", () => getSafetyReport())
 ipcMain.handle("get-app-info", () => ({
   name: "B2 VPN Client",
   version: app.getVersion(),
@@ -1400,6 +1461,7 @@ ipcMain.handle("get-app-info", () => ({
     "OS keychain-backed saved secrets when enabled",
     "Command-line --config and --connect-last support",
     "Live transfer, latency, and runtime specs",
+    "Local route safety audit",
     "No saved secrets unless enabled",
   ],
 }))

@@ -2,13 +2,22 @@ package middleware
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 )
+
+const (
+	defaultEndpointRateLimit = 100
+	maxRateLimitBuckets      = 512
+)
+
+var hashLikePathSegment = regexp.MustCompile(`(?i)/[a-f0-9]{40,64}(/|$)|/[a-z2-7]{32}(/|$)`)
 
 // SecurityHeaders adds comprehensive security headers
 func SecurityHeaders(next http.Handler) http.Handler {
@@ -54,8 +63,9 @@ func AnonymityHeaders(next http.Handler) http.Handler {
 
 // RateLimiter implements token bucket rate limiting for fault tolerance
 type RateLimiter struct {
-	mu       sync.Mutex
-	requests map[string]*bucket
+	mu        sync.Mutex
+	requests  map[string]*bucket
+	lastSweep time.Time
 }
 
 type bucket struct {
@@ -72,19 +82,19 @@ func NewRateLimiter() *RateLimiter {
 func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Rate limit by endpoint, not IP for privacy
-		key := r.URL.Path
+		key := r.Method + " " + normalizeRateLimitPath(r.URL.Path)
 
 		rl.mu.Lock()
-		// Simple rate limiting - 100 requests per minute per endpoint
 		if rl.requests[key] == nil {
-			rl.requests[key] = &bucket{tokens: 100, lastRefill: time.Now()}
+			rl.requests[key] = &bucket{tokens: defaultEndpointRateLimit, lastRefill: time.Now()}
 		}
+		rl.sweepLocked(time.Now())
 
 		b := rl.requests[key]
 
 		// Refill tokens
 		if time.Since(b.lastRefill) > time.Minute {
-			b.tokens = 100
+			b.tokens = defaultEndpointRateLimit
 			b.lastRefill = time.Now()
 		}
 
@@ -96,6 +106,27 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 			rl.mu.Unlock()
 			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 		}
+	})
+}
+
+func (rl *RateLimiter) sweepLocked(now time.Time) {
+	if len(rl.requests) <= maxRateLimitBuckets && now.Sub(rl.lastSweep) < 5*time.Minute {
+		return
+	}
+	rl.lastSweep = now
+	for key, bucket := range rl.requests {
+		if now.Sub(bucket.lastRefill) > 2*time.Minute {
+			delete(rl.requests, key)
+		}
+	}
+}
+
+func normalizeRateLimitPath(path string) string {
+	return hashLikePathSegment.ReplaceAllStringFunc(path, func(segment string) string {
+		if strings.HasSuffix(segment, "/") {
+			return "/:infoHash/"
+		}
+		return "/:infoHash"
 	})
 }
 
@@ -120,11 +151,33 @@ func CORS(next http.Handler) http.Handler {
 		}
 
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, PUT, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-B2-API-Key")
 		w.Header().Set("Access-Control-Max-Age", "3600")
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func APIKey(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		expected := strings.TrimSpace(os.Getenv("B2_API_TOKEN"))
+		if expected == "" || r.Method == http.MethodOptions {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		provided := strings.TrimSpace(r.Header.Get("X-B2-API-Key"))
+		if provided == "" {
+			provided = strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+		}
+
+		if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 

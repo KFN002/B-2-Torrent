@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
+	"strconv"
 
 	"github.com/KFN002/B-2-Torrent/backend/internal/database"
 	"github.com/KFN002/B-2-Torrent/backend/internal/torrent"
@@ -35,6 +35,8 @@ type UpdateSettingsRequest struct {
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
+
+const maxRateLimitBytesPerSecond = 10 * 1024 * 1024 * 1024
 
 // TorConnection represents a Tor network connection
 type TorConnection struct {
@@ -85,6 +87,21 @@ func (h *Handlers) writeError(w http.ResponseWriter, status int, message string)
 	h.writeJSON(w, status, ErrorResponse{Error: message})
 }
 
+func (h *Handlers) validateInfoHash(w http.ResponseWriter, infoHash string) bool {
+	if torrent.IsValidInfoHash(infoHash) {
+		return true
+	}
+	h.writeError(w, http.StatusBadRequest, "Invalid torrent info hash")
+	return false
+}
+
+func normalizeRateLimit(value int) (int, bool) {
+	if value < 0 || value > maxRateLimitBytesPerSecond {
+		return 0, false
+	}
+	return value, true
+}
+
 func (h *Handlers) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	var req AddTorrentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -98,14 +115,9 @@ func (h *Handlers) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		magnetURI = req.MagnetLink
 	}
 
-	if magnetURI == "" {
-		h.logger.Warn("Empty magnet URI received")
-		h.writeError(w, http.StatusBadRequest, "Magnet URI is required")
-		return
-	}
-
-	if !strings.HasPrefix(strings.ToLower(magnetURI), "magnet:?") {
-		h.writeError(w, http.StatusBadRequest, "Only magnet links are supported")
+	if err := h.torrentClient.ValidateMagnetURI(magnetURI); err != nil {
+		h.logger.Warn("Rejected unsafe magnet URI", zap.Error(err))
+		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -131,6 +143,9 @@ func (h *Handlers) GetTorrents(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) GetTorrent(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	infoHash := vars["infoHash"]
+	if !h.validateInfoHash(w, infoHash) {
+		return
+	}
 
 	torrent, err := h.torrentClient.GetTorrent(infoHash)
 	if err != nil {
@@ -145,6 +160,9 @@ func (h *Handlers) GetTorrent(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) DeleteTorrent(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	infoHash := vars["infoHash"]
+	if !h.validateInfoHash(w, infoHash) {
+		return
+	}
 
 	h.logger.Info("Deleting torrent", zap.String("infoHash", infoHash))
 
@@ -165,6 +183,9 @@ func (h *Handlers) DeleteTorrent(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) PauseTorrent(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	infoHash := vars["infoHash"]
+	if !h.validateInfoHash(w, infoHash) {
+		return
+	}
 
 	h.logger.Info("Pausing torrent", zap.String("infoHash", infoHash))
 
@@ -181,6 +202,9 @@ func (h *Handlers) PauseTorrent(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ResumeTorrent(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	infoHash := vars["infoHash"]
+	if !h.validateInfoHash(w, infoHash) {
+		return
+	}
 
 	h.logger.Info("Resuming torrent", zap.String("infoHash", infoHash))
 
@@ -340,6 +364,9 @@ func (h *Handlers) CleanupData(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ToggleFavorite(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	infoHash := vars["infoHash"]
+	if !h.validateInfoHash(w, infoHash) {
+		return
+	}
 
 	var req struct {
 		Favorite bool `json:"favorite"`
@@ -370,6 +397,9 @@ func (h *Handlers) ToggleFavorite(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) SetTorrentLimits(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	infoHash := vars["infoHash"]
+	if !h.validateInfoHash(w, infoHash) {
+		return
+	}
 
 	var req struct {
 		DownloadLimit int `json:"downloadLimit"`
@@ -380,22 +410,32 @@ func (h *Handlers) SetTorrentLimits(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+	downloadLimit, ok := normalizeRateLimit(req.DownloadLimit)
+	if !ok {
+		h.writeError(w, http.StatusBadRequest, "Invalid download limit")
+		return
+	}
+	uploadLimit, ok := normalizeRateLimit(req.UploadLimit)
+	if !ok {
+		h.writeError(w, http.StatusBadRequest, "Invalid upload limit")
+		return
+	}
 
 	h.logger.Info("Setting torrent limits",
 		zap.String("infoHash", infoHash),
-		zap.Int("downloadLimit", req.DownloadLimit),
-		zap.Int("uploadLimit", req.UploadLimit),
+		zap.Int("downloadLimit", downloadLimit),
+		zap.Int("uploadLimit", uploadLimit),
 	)
 
 	// Store limits in database
 	dlKey := fmt.Sprintf("torrent_%s_download_limit", infoHash)
 	ulKey := fmt.Sprintf("torrent_%s_upload_limit", infoHash)
 
-	h.db.SetSetting(dlKey, fmt.Sprintf("%d", req.DownloadLimit))
-	h.db.SetSetting(ulKey, fmt.Sprintf("%d", req.UploadLimit))
+	h.db.SetSetting(dlKey, strconv.Itoa(downloadLimit))
+	h.db.SetSetting(ulKey, strconv.Itoa(uploadLimit))
 
 	// Apply limits to torrent client
-	if err := h.torrentClient.SetLimits(infoHash, req.DownloadLimit, req.UploadLimit); err != nil {
+	if err := h.torrentClient.SetLimits(infoHash, downloadLimit, uploadLimit); err != nil {
 		h.logger.Warn("Failed to apply limits to torrent client", zap.Error(err))
 	}
 
@@ -406,6 +446,9 @@ func (h *Handlers) SetTorrentLimits(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) SetTorrentSchedule(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	infoHash := vars["infoHash"]
+	if !h.validateInfoHash(w, infoHash) {
+		return
+	}
 
 	var req struct {
 		Enabled            bool   `json:"enabled"`
@@ -446,18 +489,28 @@ func (h *Handlers) SetGlobalLimits(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+	downloadLimit, ok := normalizeRateLimit(req.DownloadLimit)
+	if !ok {
+		h.writeError(w, http.StatusBadRequest, "Invalid download limit")
+		return
+	}
+	uploadLimit, ok := normalizeRateLimit(req.UploadLimit)
+	if !ok {
+		h.writeError(w, http.StatusBadRequest, "Invalid upload limit")
+		return
+	}
 
 	h.logger.Info("Setting global limits",
-		zap.Int("downloadLimit", req.DownloadLimit),
-		zap.Int("uploadLimit", req.UploadLimit),
+		zap.Int("downloadLimit", downloadLimit),
+		zap.Int("uploadLimit", uploadLimit),
 	)
 
 	// Store global limits in database
-	h.db.SetSetting("global_download_limit", fmt.Sprintf("%d", req.DownloadLimit))
-	h.db.SetSetting("global_upload_limit", fmt.Sprintf("%d", req.UploadLimit))
+	h.db.SetSetting("global_download_limit", strconv.Itoa(downloadLimit))
+	h.db.SetSetting("global_upload_limit", strconv.Itoa(uploadLimit))
 
 	// Apply global limits to torrent client
-	if err := h.torrentClient.SetGlobalLimits(req.DownloadLimit, req.UploadLimit); err != nil {
+	if err := h.torrentClient.SetGlobalLimits(downloadLimit, uploadLimit); err != nil {
 		h.logger.Warn("Failed to apply global limits", zap.Error(err))
 	}
 

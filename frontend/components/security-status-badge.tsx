@@ -21,11 +21,14 @@ export function SecurityStatusBadge() {
     )
   }
 
-  const allEnabled = data.killSwitchEnabled && 
-                     data.dnsProtectionEnabled && 
-                     data.ipObfuscationEnabled && 
-                     data.dataEncryptionEnabled &&
-                     data.torEnabled
+  const allEnabled =
+    data.killSwitchActive &&
+    data.dnsProtectionActive &&
+    data.ipObfuscationActive &&
+    data.dnsObfuscationActive &&
+    data.dhtInvisible &&
+    data.sharingDisabled &&
+    data.dataEncryptionActive
 
   if (allEnabled) {
     return (
@@ -36,7 +39,7 @@ export function SecurityStatusBadge() {
     )
   }
 
-  if (data.torEnabled && data.killSwitchEnabled) {
+  if (data.killSwitchActive && data.dnsProtectionActive && data.dhtInvisible) {
     return (
       <Badge variant="default" className="gap-1.5 bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
         <Shield className="h-3 w-3" />

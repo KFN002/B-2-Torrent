@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("api", {
   deleteServer: (index) => ipcRenderer.invoke("delete-server", index),
   getSettings: () => ipcRenderer.invoke("get-settings"),
   saveSettings: (settings) => ipcRenderer.invoke("save-settings", settings),
+  getSafetyReport: () => ipcRenderer.invoke("get-safety-report"),
   getAppInfo: () => ipcRenderer.invoke("get-app-info"),
   onStatusUpdate: (callback) => {
     const listener = (_event, status) => callback(status)

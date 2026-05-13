@@ -128,6 +128,18 @@ func main() {
 	if os.Getenv("OBFUSCATE_TRAFFIC") == "" {
 		_ = os.Setenv("OBFUSCATE_TRAFFIC", "true")
 	}
+	if os.Getenv("DHT_INVISIBILITY") == "" {
+		_ = os.Setenv("DHT_INVISIBILITY", "true")
+	}
+	if os.Getenv("DISABLE_SHARING") == "" {
+		_ = os.Setenv("DISABLE_SHARING", "true")
+	}
+	if os.Getenv("DNS_OBFUSCATION") == "" {
+		_ = os.Setenv("DNS_OBFUSCATION", strconv.FormatBool(os.Getenv("PROXY_CHAIN") != ""))
+	}
+	if os.Getenv("IP_OBFUSCATION") == "" {
+		_ = os.Setenv("IP_OBFUSCATION", strconv.FormatBool(os.Getenv("PROXY_CHAIN") != ""))
+	}
 
 	proxyChain := os.Getenv("PROXY_CHAIN")
 	torrentClient, err := torrent.NewClient(proxyChain, downloadDir)

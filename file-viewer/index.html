@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self' file: blob: data:; script-src 'self'; style-src 'self'; img-src 'self' file: data: blob:; media-src 'self' file: data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' b2safe-file: data: blob:; media-src 'self' b2safe-file: data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>B2 Safe File Viewer</title>
@@ -37,6 +37,7 @@
           </div>
           <div class="header-actions">
             <button id="copy-hash" class="ghost-button" disabled>Copy SHA-256</button>
+            <button id="copy-report" class="ghost-button" disabled>Copy Report</button>
             <button id="forget-file" class="ghost-button" disabled>Forget</button>
           </div>
         </header>
@@ -67,6 +68,10 @@
               <span>Entropy</span>
               <strong id="meta-entropy"></strong>
             </div>
+            <div class="detail-card">
+              <span>Risk</span>
+              <strong id="meta-risk"></strong>
+            </div>
           </div>
 
           <div class="content-grid">
@@ -90,6 +95,8 @@
                 <dd id="meta-modified"></dd>
                 <dt>Mode</dt>
                 <dd id="meta-mode"></dd>
+                <dt>MIME</dt>
+                <dd id="meta-mime"></dd>
                 <dt>SHA-256</dt>
                 <dd id="meta-sha" class="mono wrap"></dd>
               </dl>

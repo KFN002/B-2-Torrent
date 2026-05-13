@@ -159,17 +159,17 @@ func calculateSecurityScore(db *database.Database, tc *torrent.Client) int {
 	score := 0
 
 	killSwitch, _ := db.GetSetting("kill_switch_enabled")
-	if killSwitch == "true" {
+	if boolSettingOrDefault(killSwitch, true) {
 		score += 20
 	}
 
 	dnsProtection, _ := db.GetSetting("dns_protection_enabled")
-	if dnsProtection == "true" {
+	if boolSettingOrDefault(dnsProtection, true) {
 		score += 20
 	}
 
 	forceEncryption, _ := db.GetSetting("force_encryption")
-	if forceEncryption == "true" {
+	if boolSettingOrDefault(forceEncryption, true) {
 		score += 20
 	}
 
@@ -183,5 +183,18 @@ func calculateSecurityScore(db *database.Database, tc *torrent.Client) int {
 		score += 20
 	}
 
+	dhtInvisibility, _ := db.GetSetting("dht_invisibility")
+	if boolSettingOrDefault(dhtInvisibility, true) {
+		score += 10
+	}
+
+	sharingDisabled, _ := db.GetSetting("sharing_disabled")
+	if boolSettingOrDefault(sharingDisabled, true) {
+		score += 10
+	}
+
+	if score > 100 {
+		return 100
+	}
 	return score
 }

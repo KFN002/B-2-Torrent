@@ -146,7 +146,25 @@ let blockStats = {
   malware: 0,
   social: 0,
   fingerprinting: 0,
+  downloads: 0,
+  heuristic: 0,
   total: 0,
+}
+
+const DEFAULT_BROWSER_SETTINGS = {
+  blockAds: true,
+  blockTrackers: true,
+  blockMalware: true,
+  blockSocial: true,
+  blockFingerprinting: true,
+  blockDownloads: true,
+  blockPopups: true,
+  clearOnExit: true,
+  antiFingerprint: true,
+  secureHeaders: true,
+  noHistory: true,
+  noCache: true,
+  httpsOnlyMode: true,
 }
 
 let mainWindow
@@ -185,7 +203,10 @@ const securityHeaders = {
 function isSafeWebUrl(value) {
   try {
     const parsed = new URL(value)
-    return parsed.protocol === "https:" || parsed.protocol === "http:" || parsed.protocol === "about:"
+    if (parsed.protocol === "about:") return parsed.href === "about:blank"
+    if (parsed.protocol === "https:") return true
+    if (parsed.protocol === "http:") return !getBrowserSettings().httpsOnlyMode || isLocalHost(parsed.hostname)
+    return false
   } catch {
     return false
   }
@@ -197,7 +218,45 @@ function normalizeNavigationUrl(value) {
   if (!trimmed) return null
 
   const candidate = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed) ? trimmed : `https://${trimmed}`
-  return isSafeWebUrl(candidate) ? candidate : null
+  try {
+    const parsed = new URL(candidate)
+    if (parsed.protocol === "http:" && getBrowserSettings().httpsOnlyMode && !isLocalHost(parsed.hostname)) {
+      parsed.protocol = "https:"
+    }
+    return isSafeWebUrl(parsed.href) ? parsed.href : null
+  } catch {
+    return null
+  }
+}
+
+function isLocalHost(hostname) {
+  const host = String(hostname || "").toLowerCase()
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host.endsWith(".localhost")
+}
+
+function getBrowserSettings() {
+  const stored = store?.get("browserSettings", {}) || {}
+  return { ...DEFAULT_BROWSER_SETTINGS, ...stored }
+}
+
+function normalizeBrowserSettings(settings = {}) {
+  return Object.fromEntries(
+    Object.entries(DEFAULT_BROWSER_SETTINGS).map(([key, fallback]) => [
+      key,
+      typeof fallback === "boolean" ? (settings[key] === undefined ? fallback : settings[key] === true) : settings[key] ?? fallback,
+    ]),
+  )
+}
+
+function isCategoryEnabled(category, settings) {
+  const map = {
+    ads: "blockAds",
+    trackers: "blockTrackers",
+    malware: "blockMalware",
+    social: "blockSocial",
+    fingerprinting: "blockFingerprinting",
+  }
+  return settings[map[category]] !== false
 }
 
 function createWindow() {
@@ -238,6 +297,14 @@ function createWindow() {
   Menu.setApplicationMenu(null)
 
   mainWindow.loadFile("index.html")
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
+  mainWindow.webContents.on("will-navigate", (event, navigationUrl) => {
+    try {
+      if (new URL(navigationUrl).protocol !== "file:") event.preventDefault()
+    } catch {
+      event.preventDefault()
+    }
+  })
 
   mainWindow.once("ready-to-show", () => {
     mainWindow.show()
@@ -304,7 +371,9 @@ function createTab(url = "about:blank") {
   })
 
   view.webContents.on("did-finish-load", () => {
-    injectAntiFingerprinting(view.webContents)
+    if (getBrowserSettings().antiFingerprint) {
+      injectAntiFingerprinting(view.webContents)
+    }
   })
 
   view.webContents.on("page-title-updated", (event, title) => {
@@ -312,6 +381,10 @@ function createTab(url = "about:blank") {
   })
 
   view.webContents.setWindowOpenHandler(({ url }) => {
+    if (getBrowserSettings().blockPopups) {
+      blockStats.total++
+      return { action: "deny" }
+    }
     const newTabId = createTab(url)
     switchToTab(newTabId)
     return { action: "deny" }
@@ -320,8 +393,14 @@ function createTab(url = "about:blank") {
   tabs.set(tabId, view)
 
   view.webContents.on("will-navigate", (event, navigationUrl) => {
-    if (!isSafeWebUrl(navigationUrl)) {
+    const safeUrl = normalizeNavigationUrl(navigationUrl)
+    if (!safeUrl) {
       event.preventDefault()
+      return
+    }
+    if (safeUrl !== navigationUrl) {
+      event.preventDefault()
+      view.webContents.loadURL(safeUrl)
     }
   })
 
@@ -361,17 +440,38 @@ function configureTabSecurity(ses) {
     ses.setDisplayMediaRequestHandler((_request, callback) => callback({}))
   }
 
+  ses.on("will-download", (event) => {
+    if (getBrowserSettings().blockDownloads) {
+      blockStats.downloads++
+      blockStats.total++
+      event.preventDefault()
+    }
+  })
+
   ses.webRequest.onBeforeRequest((details, callback) => {
+    const settings = getBrowserSettings()
     const url = details.url.toLowerCase()
-    if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("about:")) {
+    if (!url.startsWith("http://") && !url.startsWith("https://") && url !== "about:blank") {
       callback({ cancel: true })
       return
+    }
+    if (url.startsWith("http://") && settings.httpsOnlyMode) {
+      try {
+        if (!isLocalHost(new URL(details.url).hostname)) {
+          callback({ cancel: true })
+          return
+        }
+      } catch {
+        callback({ cancel: true })
+        return
+      }
     }
 
     let shouldBlock = false
     let blockType = null
 
     for (const [category, patterns] of Object.entries(blockLists)) {
+      if (!isCategoryEnabled(category, settings)) continue
       if (patterns.some((pattern) => url.includes(pattern))) {
         shouldBlock = true
         blockType = category
@@ -396,6 +496,7 @@ function configureTabSecurity(ses) {
       if (suspiciousPatterns.some((pattern) => pattern.test(url))) {
         shouldBlock = true
         blockType = "heuristic"
+        blockStats.heuristic++
         blockStats.total++
       }
     }
@@ -426,23 +527,28 @@ function injectAntiFingerprinting(webContents) {
   webContents.executeJavaScript(`
     const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
     HTMLCanvasElement.prototype.toDataURL = function() {
-      const context = this.getContext('2d');
-      if (context) {
+      try {
+        const context = this.getContext('2d');
+        if (context && this.width > 0 && this.height > 0) {
         const imageData = context.getImageData(0, 0, this.width, this.height);
         for (let i = 0; i < imageData.data.length; i += 4) {
           imageData.data[i] = imageData.data[i] ^ Math.floor(Math.random() * 10);
         }
         context.putImageData(imageData, 0, 0);
+        }
+      } catch (_) {
       }
       return originalToDataURL.apply(this, arguments);
     };
 
-    const getParameter = WebGLRenderingContext.prototype.getParameter;
-    WebGLRenderingContext.prototype.getParameter = function(param) {
-      if (param === 37445) return 'Generic GPU';
-      if (param === 37446) return 'Generic Vendor';
-      return getParameter.apply(this, arguments);
-    };
+    if (window.WebGLRenderingContext) {
+      const getParameter = WebGLRenderingContext.prototype.getParameter;
+      WebGLRenderingContext.prototype.getParameter = function(param) {
+        if (param === 37445) return 'Generic GPU';
+        if (param === 37446) return 'Generic Vendor';
+        return getParameter.apply(this, arguments);
+      };
+    }
 
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (AudioContext) {
@@ -539,7 +645,26 @@ async function clearAllData() {
     await ses.clearHostResolverCache()
   }
 
-  if (store) store.clear()
+  for (const view of tabs.values()) {
+    if (!view || view.isDestroyed()) continue
+    const ses = view.webContents.session
+    await ses.clearStorageData().catch(() => {})
+    await ses.clearCache().catch(() => {})
+    await ses.clearAuthCache().catch(() => {})
+    await ses.clearHostResolverCache().catch(() => {})
+  }
+
+  if (store) {
+    const preserved = {
+      proxy: store.get("proxy"),
+      browserSettings: store.get("browserSettings"),
+      searchSettings: store.get("searchSettings"),
+    }
+    store.clear()
+    for (const [key, value] of Object.entries(preserved)) {
+      if (value !== undefined) store.set(key, value)
+    }
+  }
 
   console.log("[Secure Browser] All data cleared")
 }
@@ -632,28 +757,19 @@ ipcMain.handle("reset-block-stats", () => {
     malware: 0,
     social: 0,
     fingerprinting: 0,
+    downloads: 0,
+    heuristic: 0,
     total: 0,
   }
   return { success: true }
 })
 
 ipcMain.handle("get-browser-settings", () => {
-  return {
-    blockAds: true,
-    blockTrackers: true,
-    blockMalware: true,
-    blockSocial: true,
-    blockFingerprinting: true,
-    clearOnExit: true,
-    antiFingerprint: true,
-    secureHeaders: true,
-    noHistory: true,
-    noCache: true,
-  }
+  return getBrowserSettings()
 })
 
 ipcMain.handle("save-browser-settings", (event, settings) => {
-  store.set("browserSettings", settings)
+  store.set("browserSettings", normalizeBrowserSettings(settings))
   return { success: true }
 })
 
@@ -669,6 +785,9 @@ ipcMain.handle("get-browser-info", () => {
       "Advanced ad blocking",
       "Tracker blocking",
       "Malware protection",
+      "HTTPS-only navigation upgrades",
+      "Download blocking by default",
+      "Popup blocking by default",
       "Anti-fingerprinting",
       "Automatic data clearing",
       "Secure headers",
