@@ -48,6 +48,25 @@ func NewRabbitMQ(url string, logger *zap.Logger) (*RabbitMQ, error) {
 		conn.Close()
 		return nil, fmt.Errorf("failed to declare exchange: %w", err)
 	}
+	if err := channel.ExchangeDeclare("torrent_events.dead", "topic", true, false, false, false, nil); err != nil {
+		channel.Close()
+		conn.Close()
+		return nil, fmt.Errorf("failed to declare dead-letter exchange: %w", err)
+	}
+	deadQueue, err := channel.QueueDeclare("torrent_events.dead", true, false, false, false, amqp.Table{
+		"x-max-length":  int32(1000),
+		"x-message-ttl": int32(86400000),
+	})
+	if err != nil {
+		channel.Close()
+		conn.Close()
+		return nil, fmt.Errorf("failed to declare bounded dead-letter queue: %w", err)
+	}
+	if err := channel.QueueBind(deadQueue.Name, "#", "torrent_events.dead", false, nil); err != nil {
+		channel.Close()
+		conn.Close()
+		return nil, fmt.Errorf("failed to bind dead-letter queue: %w", err)
+	}
 
 	logger.Info("RabbitMQ connected successfully")
 
@@ -72,9 +91,10 @@ func (r *RabbitMQ) Publish(ctx context.Context, routingKey string, event Event) 
 		false,
 		false,
 		amqp.Publishing{
-			ContentType: "application/json",
-			Body:        body,
-			Timestamp:   event.Timestamp,
+			ContentType:  "application/json",
+			Body:         body,
+			Timestamp:    event.Timestamp,
+			DeliveryMode: amqp.Persistent,
 		},
 	); err != nil {
 		r.logger.Error("Failed to publish event", zap.Error(err), zap.String("routingKey", routingKey))
@@ -92,7 +112,9 @@ func (r *RabbitMQ) Subscribe(queueName, routingKey string, handler func(Event) e
 		false,
 		false,
 		false,
-		nil,
+		amqp.Table{
+			"x-dead-letter-exchange": "torrent_events.dead",
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to declare queue: %w", err)
@@ -132,7 +154,8 @@ func (r *RabbitMQ) Subscribe(queueName, routingKey string, handler func(Event) e
 
 			if err := handler(event); err != nil {
 				r.logger.Error("Failed to handle event", zap.Error(err), zap.String("type", event.Type))
-				msg.Nack(false, true) // Requeue
+				// Poison messages are dead-lettered instead of requeued forever.
+				msg.Nack(false, false)
 			} else {
 				msg.Ack(false)
 			}

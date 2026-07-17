@@ -37,7 +37,10 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		// Strict Content Security Policy
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'self'; form-action 'self';")
 
-		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		// HSTS is only meaningful over HTTPS. The default local deployment is HTTP.
+		if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 
 		w.Header().Set("Server", "")
 		w.Header().Del("X-Powered-By")

@@ -79,7 +79,7 @@ type SecurityStatus struct {
 	DownloadSpeed              int64  `json:"downloadSpeed"`
 	UploadSpeed                int64  `json:"uploadSpeed"`
 	SecurityScore              int    `json:"securityScore"`
-	LeaksDetected              int    `json:"leaksDetected"`
+	LeaksDetected              *int   `json:"leaksDetected"`
 	LastCheck                  string `json:"lastCheck"`
 }
 
@@ -112,27 +112,6 @@ func (h *Handlers) GetSecurityStatus(w http.ResponseWriter, r *http.Request) {
 	if vpnType == "" {
 		vpnType = "none"
 	}
-	noLogsMode, _ := h.db.GetSetting("no_logs_mode")
-	obfuscateTraffic, _ := h.db.GetSetting("obfuscate_traffic")
-	killSwitchEnabled, _ := h.db.GetSetting("kill_switch_enabled")
-	dnsProtectionEnabled, _ := h.db.GetSetting("dns_protection_enabled")
-	dnsObfuscationEnabled, _ := h.db.GetSetting("dns_obfuscation_enabled")
-	ipObfuscationEnabled, _ := h.db.GetSetting("ip_obfuscation_enabled")
-	dhtInvisibility, _ := h.db.GetSetting("dht_invisibility")
-	sharingDisabled, _ := h.db.GetSetting("sharing_disabled")
-	dataEncryptionEnabled, _ := h.db.GetSetting("data_encryption_enabled")
-	forceEncryption, _ := h.db.GetSetting("force_encryption")
-	rejectPlaintext, _ := h.db.GetSetting("reject_plaintext")
-	macRandomization, _ := h.db.GetSetting("mac_randomization")
-	antiFingerprint, _ := h.db.GetSetting("anti_fingerprint")
-	secureDelete, _ := h.db.GetSetting("secure_delete")
-	peerVerification, _ := h.db.GetSetting("peer_verification")
-	blockMaliciousPeers, _ := h.db.GetSetting("block_malicious_peers")
-	sandboxMode, _ := h.db.GetSetting("sandbox_mode")
-	memoryEncryption, _ := h.db.GetSetting("memory_encryption")
-	autoWipeOnExit, _ := h.db.GetSetting("auto_wipe_on_exit")
-	stealthMode, _ := h.db.GetSetting("stealth_mode")
-
 	privacy := h.torrentClient.PrivacyStatus()
 	torrents := h.torrentClient.GetAllTorrents()
 	var downloadSpeed int64
@@ -141,32 +120,34 @@ func (h *Handlers) GetSecurityStatus(w http.ResponseWriter, r *http.Request) {
 		downloadSpeed += item.DownloadSpeed
 		uploadSpeed += item.UploadSpeed
 	}
-	connectionType := connectionTypeFor(vpnType, h.torrentClient.IsTorEnabled())
-	if (vpnType == "tor" || h.torrentClient.IsTorEnabled()) && !privacy.ProxyAvailable {
+	connectionType := "Direct Connection"
+	if privacy.ProxyAvailable {
+		connectionType = "Tor Proxy Chain"
+	} else if vpnType == "tor" || h.torrentClient.IsTorEnabled() {
 		connectionType = "Tor Proxy Unavailable"
 	}
 
 	status := SecurityStatus{
-		KillSwitchActive:           boolSettingOrDefault(killSwitchEnabled, true),
-		DNSProtectionActive:        boolSettingOrDefault(dnsProtectionEnabled, true),
-		DNSObfuscationActive:       boolSettingOrDefault(dnsObfuscationEnabled, privacy.DNSObfuscation) && privacy.DNSObfuscation,
-		IPObfuscationActive:        boolSettingOrDefault(ipObfuscationEnabled, privacy.IPObfuscation) && (privacy.IPObfuscation || vpnType != "none"),
-		DHTInvisible:               boolSettingOrDefault(dhtInvisibility, true) || privacy.DHTInvisibility,
-		SharingDisabled:            boolSettingOrDefault(sharingDisabled, true) || privacy.SharingDisabled,
-		TrafficObfuscationActive:   obfuscateTraffic == "true",
-		DataEncryptionActive:       boolSettingOrDefault(dataEncryptionEnabled, true),
-		ForceEncryptionActive:      boolSettingOrDefault(forceEncryption, true),
-		RejectPlaintextActive:      boolSettingOrDefault(rejectPlaintext, true),
-		NoLogsMode:                 noLogsMode == "true",
-		MACRandomizationActive:     macRandomization == "true",
-		AntiFingerprintActive:      antiFingerprint == "true",
-		SecureDeleteActive:         boolSettingOrDefault(secureDelete, true),
-		PeerVerificationActive:     boolSettingOrDefault(peerVerification, true),
-		BlockMaliciousPeersActive:  boolSettingOrDefault(blockMaliciousPeers, true),
-		SandboxModeActive:          sandboxMode == "true",
-		MemoryEncryptionActive:     boolSettingOrDefault(memoryEncryption, true),
-		AutoWipeOnExitActive:       autoWipeOnExit == "true",
-		StealthModeActive:          stealthMode == "true",
+		KillSwitchActive:           false,
+		DNSProtectionActive:        privacy.DNSObfuscation,
+		DNSObfuscationActive:       privacy.DNSObfuscation,
+		IPObfuscationActive:        privacy.IPObfuscation,
+		DHTInvisible:               privacy.DHTInvisibility,
+		SharingDisabled:            privacy.SharingDisabled,
+		TrafficObfuscationActive:   privacy.TrafficObfuscation,
+		DataEncryptionActive:       false,
+		ForceEncryptionActive:      false,
+		RejectPlaintextActive:      false,
+		NoLogsMode:                 privacy.NoLogsMode,
+		MACRandomizationActive:     false,
+		AntiFingerprintActive:      false,
+		SecureDeleteActive:         false,
+		PeerVerificationActive:     false,
+		BlockMaliciousPeersActive:  false,
+		SandboxModeActive:          false,
+		MemoryEncryptionActive:     false,
+		AutoWipeOnExitActive:       false,
+		StealthModeActive:          false,
 		PeerExchangeDisabled:       privacy.PeerExchangeDisabled,
 		InboundConnectionsDisabled: privacy.InboundConnectionsDisabled,
 		DirectPeerDialingDisabled:  privacy.DirectPeerDialingDisabled,
@@ -177,7 +158,7 @@ func (h *Handlers) GetSecurityStatus(w http.ResponseWriter, r *http.Request) {
 		DownloadSpeed:              downloadSpeed,
 		UploadSpeed:                uploadSpeed,
 		SecurityScore:              calculateSecurityScore(h.db, h.torrentClient),
-		LeaksDetected:              0,
+		LeaksDetected:              nil,
 		LastCheck:                  time.Now().UTC().Format(time.RFC3339),
 	}
 
@@ -195,8 +176,6 @@ func (h *Handlers) GetSecurityConfig(w http.ResponseWriter, r *http.Request) {
 	if h.torrentClient.IsTorEnabled() && vpnType == "none" {
 		vpnType = "tor"
 	}
-	vlessKey, _ := h.db.GetSetting("vless_key")
-	outlineKey, _ := h.db.GetSetting("outline_key")
 	killSwitch, _ := h.db.GetSetting("kill_switch_enabled")
 	dnsProtection, _ := h.db.GetSetting("dns_protection_enabled")
 	dataEncryption, _ := h.db.GetSetting("data_encryption_enabled")
@@ -238,8 +217,9 @@ func (h *Handlers) GetSecurityConfig(w http.ResponseWriter, r *http.Request) {
 		DataEncryptionEnabled: boolSettingOrDefault(dataEncryption, true),
 		TorEnabled:            h.torrentClient.IsTorEnabled(),
 		VPNType:               vpnType,
-		VLESSKey:              vlessKey,
-		OutlineKey:            outlineKey,
+		// Secrets are intentionally write-only and never returned by the API.
+		VLESSKey:              "",
+		OutlineKey:            "",
 		NoLogsMode:            noLogsMode == "true",
 		ObfuscateTraffic:      obfuscateTraffic == "true",
 		ForceEncryption:       forceEncryption == "true" || forceEncryption == "",
@@ -271,8 +251,8 @@ func (h *Handlers) UpdateSecuritySettings(w http.ResponseWriter, r *http.Request
 	if config.VPNType == "" {
 		config.VPNType = "none"
 	}
-	if config.VPNType != "none" && config.VPNType != "tor" && config.VPNType != "vless" && config.VPNType != "outline" {
-		h.writeError(w, http.StatusBadRequest, "Unsupported VPN type")
+	if config.VPNType != "none" && config.VPNType != "tor" {
+		h.writeError(w, http.StatusBadRequest, "The backend only supports its configured Tor proxy. Use the standalone VPN client for VLESS or Outline.")
 		return
 	}
 	config.TorEnabled = config.VPNType == "tor"
@@ -326,14 +306,6 @@ func (h *Handlers) UpdateSecuritySettings(w http.ResponseWriter, r *http.Request
 	h.db.SetSetting("tor_enabled", fmt.Sprintf("%t", config.TorEnabled))
 
 	h.db.SetSetting("vpn_type", config.VPNType)
-	if config.VPNType == "vless" && config.VLESSKey != "" {
-		h.db.SetSetting("vless_key", config.VLESSKey)
-		h.logger.Info("VLESS key saved")
-	}
-	if config.VPNType == "outline" && config.OutlineKey != "" {
-		h.db.SetSetting("outline_key", config.OutlineKey)
-		h.logger.Info("Outline key saved")
-	}
 
 	h.db.SetSetting("no_logs_mode", fmt.Sprintf("%t", config.NoLogsMode))
 	h.db.SetSetting("obfuscate_traffic", fmt.Sprintf("%t", config.ObfuscateTraffic))
@@ -446,10 +418,11 @@ func (h *Handlers) GetIPStatus(w http.ResponseWriter, r *http.Request) {
 
 // TestDNSLeak tests for DNS leaks
 func (h *Handlers) TestDNSLeak(w http.ResponseWriter, r *http.Request) {
-	h.logger.Info("Testing DNS leak")
+	h.logger.Info("DNS leak test requested")
 	h.writeJSON(w, http.StatusOK, map[string]interface{}{
-		"dnsLeakDetected": false,
-		"message":         "No DNS leaks detected",
+		"checked":         false,
+		"dnsLeakDetected": nil,
+		"message":         "A DNS leak test requires an external resolver probe and is not performed by the local API. No safety conclusion was made.",
 	})
 }
 

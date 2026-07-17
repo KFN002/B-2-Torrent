@@ -34,7 +34,7 @@ interface SecurityStatus {
   dataEncryptionActive: boolean
   securityScore: number
   noLogsMode: boolean
-  leaksDetected: number
+  leaksDetected: number | null
   connectionType: string
   downloadSpeed: number
   uploadSpeed: number
@@ -43,21 +43,21 @@ interface SecurityStatus {
 export function SecurityStatusTicker() {
   // Language removed - English only
   const [status, setStatus] = useState<SecurityStatus>({
-    killSwitchActive: true,
-    dnsProtectionActive: true,
+		killSwitchActive: false,
+		dnsProtectionActive: false,
     dnsObfuscationActive: false,
     ipObfuscationActive: false,
-    dhtInvisible: true,
-    sharingDisabled: true,
+		dhtInvisible: false,
+		sharingDisabled: false,
     udpTrackersBlocked: false,
     proxyRequired: false,
     proxyAvailable: false,
     trafficObfuscationActive: false,
-    dataEncryptionActive: true,
-    securityScore: 100,
+		dataEncryptionActive: false,
+		securityScore: 0,
     noLogsMode: false,
-    leaksDetected: 0,
-    connectionType: "Secure Connection",
+		leaksDetected: null,
+		connectionType: "Status unavailable",
     downloadSpeed: 0,
     uploadSpeed: 0,
   })
@@ -72,11 +72,11 @@ export function SecurityStatusTicker() {
     uptime: 0,
   })
   const [networkInfo, setNetworkInfo] = useState({
-    publicIP: "Protected",
+		publicIP: "Not checked",
     localIP: "Detecting...",
     country: "Unknown",
     city: "Unknown",
-    isp: "Protected",
+		isp: "Not checked",
     protocol: "Unknown",
     bandwidth: "0 Mbps",
     latency: 0,
@@ -100,7 +100,7 @@ export function SecurityStatusTicker() {
             }))
           }
         } catch {
-          setNetworkInfo((prev) => ({ ...prev, publicIP: "Protected", localIP: "Hidden" }))
+			setNetworkInfo((prev) => ({ ...prev, publicIP: "Not checked", localIP: "Not checked" }))
         }
         return
       }
@@ -129,7 +129,7 @@ export function SecurityStatusTicker() {
           }
         }
       } catch {
-        setNetworkInfo((prev) => ({ ...prev, publicIP: "Protected" }))
+		setNetworkInfo((prev) => ({ ...prev, publicIP: "Lookup failed" }))
       }
 
       try {
@@ -199,14 +199,12 @@ export function SecurityStatusTicker() {
     const collectSystemInfo = () => {
       if (typeof window !== "undefined" && "performance" in window) {
         const memory = (performance as any).memory
-        const latency = Math.round(Math.random() * 20 + 10) // 10-30ms simulated
-        setSystemInfo((prev) => ({
+		setSystemInfo((prev) => ({
           ...prev,
           memory: memory ? Math.round((memory.usedJSHeapSize / memory.jsHeapSizeLimit) * 100) : 0,
-          cpu: Math.round(Math.random() * 30 + 10), // Simulated CPU usage
+			cpu: 0,
           uptime: Math.floor(performance.now() / 1000 / 60), // Minutes since page load
         }))
-        setNetworkInfo((prev) => ({ ...prev, latency }))
       }
     }
 
@@ -426,7 +424,12 @@ export function SecurityStatusTicker() {
 
           {/* Leak Status */}
           <div className="inline-flex items-center gap-2">
-            {status.leaksDetected > 0 ? (
+            {status.leaksDetected === null ? (
+              <>
+                <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+                <span className="text-warning">LEAK STATUS NOT CHECKED</span>
+              </>
+            ) : status.leaksDetected > 0 ? (
               <>
                 <AlertTriangle className="h-3.5 w-3.5 text-destructive animate-pulse" />
                 <span className="text-destructive font-semibold">{status.leaksDetected} LEAKS DETECTED!</span>
@@ -611,7 +614,12 @@ export function SecurityStatusTicker() {
           <div className="inline-block h-3 w-px bg-border/40" />
 
           <div className="inline-flex items-center gap-2">
-            {status.leaksDetected > 0 ? (
+            {status.leaksDetected === null ? (
+              <>
+                <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+                <span className="text-warning">LEAK STATUS NOT CHECKED</span>
+              </>
+            ) : status.leaksDetected > 0 ? (
               <>
                 <AlertTriangle className="h-3.5 w-3.5 text-destructive animate-pulse" />
                 <span className="text-destructive font-semibold">{status.leaksDetected} LEAKS DETECTED!</span>

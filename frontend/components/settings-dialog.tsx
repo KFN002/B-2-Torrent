@@ -128,6 +128,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { t } = useLanguage()
   const [isLoading, setIsLoading] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteDownloads, setDeleteDownloads] = useState(false)
   const [connectionStats, setConnectionStats] = useState({
     activeConnections: 0,
     bandwidthUsage: 0,
@@ -409,12 +410,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     try {
       const response = await fetch("/api/cleanup", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "DELETE_ALL_LOCAL_DATA", deleteDownloads }),
       })
 
       if (response.ok) {
         toast({
           title: t("dataDeleted") || "Data deleted",
-          description: t("dataDeletedDesc") || "All user data and logs have been permanently deleted.",
+          description: deleteDownloads ? "Local state and downloaded files were deleted." : "Local settings, active state, and temporary files were deleted. Downloads were preserved.",
         })
         setShowDeleteConfirm(false)
         onOpenChange(false)
@@ -1883,6 +1886,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               <p className="font-semibold text-destructive">
                 {t("deleteAllDataWarning2") || "This action cannot be undone!"}
               </p>
+              <label className="mt-4 flex items-center justify-between gap-4 rounded-lg border border-destructive/20 p-3">
+                <span className="text-sm text-foreground">Also delete every file in the configured downloads directory</span>
+                <Switch checked={deleteDownloads} onCheckedChange={setDeleteDownloads} />
+              </label>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,6 +11,12 @@ import (
 	"github.com/KFN002/B-2-Torrent/backend/internal/security"
 	"go.uber.org/zap"
 )
+
+const maxEncryptionFileSize = 512 << 20
+
+var supportedEncryptionAlgorithms = map[string]bool{"AES-256-GCM": true, "ChaCha20-Poly1305": true}
+var supportedKDFs = map[string]bool{"PBKDF2": true, "Argon2id": true, "scrypt": true}
+var supportedHashes = map[string]bool{"SHA-256": true, "SHA-512": true}
 
 type EncryptionHandlers struct {
 	logger *zap.Logger
@@ -35,11 +42,45 @@ type EncryptResponse struct {
 	EncryptedPath string `json:"encryptedPath,omitempty"`
 }
 
+func validateEncryptionRequest(req EncryptRequest) error {
+	if len(req.Password) < 12 || len(req.Password) > 1024 {
+		return fmt.Errorf("password must be between 12 and 1024 characters")
+	}
+	if !supportedEncryptionAlgorithms[req.Algorithm] {
+		return fmt.Errorf("unsupported encryption algorithm")
+	}
+	if !supportedKDFs[req.KeyDerivation] {
+		return fmt.Errorf("unsupported key derivation function")
+	}
+	if !supportedHashes[req.HashAlgorithm] {
+		return fmt.Errorf("unsupported hash algorithm")
+	}
+	return nil
+}
+
+func validateEncryptionInput(filePath string) error {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("only regular files are supported")
+	}
+	if info.Size() > maxEncryptionFileSize {
+		return fmt.Errorf("file exceeds the 512 MiB in-memory encryption limit")
+	}
+	return nil
+}
+
 func (h *EncryptionHandlers) EncryptFile(w http.ResponseWriter, r *http.Request) {
 	var req EncryptRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.logger.Error("Failed to decode request", zap.Error(err))
 		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	if err := validateEncryptionRequest(req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -49,9 +90,8 @@ func (h *EncryptionHandlers) EncryptFile(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Validate file exists
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		http.Error(w, "File not found", http.StatusNotFound)
+	if err := validateEncryptionInput(filePath); err != nil {
+		http.Error(w, "Invalid input file: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -66,6 +106,13 @@ func (h *EncryptionHandlers) EncryptFile(w http.ResponseWriter, r *http.Request)
 
 	// Generate output path
 	outputPath := filePath + ".b2encrypted"
+	if _, err := os.Lstat(outputPath); err == nil {
+		http.Error(w, "Encrypted output already exists", http.StatusConflict)
+		return
+	} else if !os.IsNotExist(err) {
+		http.Error(w, "Unable to validate output path", http.StatusInternalServerError)
+		return
+	}
 
 	// Encrypt file
 	if err := em.EncryptFile(filePath, outputPath, req.Password); err != nil {
@@ -97,6 +144,10 @@ func (h *EncryptionHandlers) DecryptFile(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
+	if err := validateEncryptionRequest(req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	filePath, err := normalizeUserFilePath(req.FilePath)
 	if err != nil {
@@ -104,9 +155,12 @@ func (h *EncryptionHandlers) DecryptFile(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Validate encrypted file exists
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		http.Error(w, "Encrypted file not found", http.StatusNotFound)
+	if !strings.HasSuffix(filePath, ".b2encrypted") {
+		http.Error(w, "Encrypted file must use the .b2encrypted suffix", http.StatusBadRequest)
+		return
+	}
+	if err := validateEncryptionInput(filePath); err != nil {
+		http.Error(w, "Invalid encrypted file: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -121,6 +175,13 @@ func (h *EncryptionHandlers) DecryptFile(w http.ResponseWriter, r *http.Request)
 
 	// Generate output path (remove .b2encrypted extension)
 	outputPath := strings.TrimSuffix(filePath, ".b2encrypted")
+	if _, err := os.Lstat(outputPath); err == nil {
+		http.Error(w, "Decrypted output already exists", http.StatusConflict)
+		return
+	} else if !os.IsNotExist(err) {
+		http.Error(w, "Unable to validate output path", http.StatusInternalServerError)
+		return
+	}
 
 	// Decrypt file
 	if err := em.DecryptFile(filePath, outputPath, req.Password); err != nil {
@@ -143,25 +204,16 @@ func (h *EncryptionHandlers) GetSupportedAlgorithms(w http.ResponseWriter, r *ht
 	algorithms := map[string]interface{}{
 		"encryption": []string{
 			"AES-256-GCM",
-			"AES-256-CBC",
-			"AES-192-GCM",
 			"ChaCha20-Poly1305",
-			"Twofish-256",
-			"Serpent-256",
-			"Camellia-256",
 		},
 		"keyDerivation": []string{
 			"PBKDF2",
 			"Argon2id",
 			"scrypt",
-			"bcrypt",
 		},
 		"hashing": []string{
 			"SHA-256",
 			"SHA-512",
-			"SHA-3-256",
-			"BLAKE2b",
-			"Whirlpool",
 		},
 	}
 

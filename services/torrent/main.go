@@ -29,13 +29,12 @@ type server struct {
 }
 
 func (s *server) AddTorrent(ctx context.Context, req *pb.AddTorrentRequest) (*pb.TorrentResponse, error) {
-	s.logger.Info("AddTorrent called", zap.String("magnetUri", req.MagnetUri[:50]+"..."))
+	s.logger.Info("AddTorrent called")
 
-	// Business logic here
-	// For now, return success
+	// This service is a scaffold and must not claim an operation completed.
 	return &pb.TorrentResponse{
-		Success: true,
-		Message: "Torrent added successfully",
+		Success: false,
+		Message: "Torrent microservice is not implemented",
 	}, nil
 }
 

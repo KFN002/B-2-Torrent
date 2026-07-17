@@ -31,7 +31,7 @@ type AnonymityMetrics struct {
 
 type LeakMetrics struct {
 	Active        bool `json:"active"`
-	LeaksDetected int  `json:"leaksDetected"`
+	LeaksDetected *int `json:"leaksDetected"`
 	Score         int  `json:"score"`
 }
 
@@ -44,98 +44,54 @@ type ObfuscationMetrics struct {
 func (h *Handlers) GetSecurityMetrics(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("Fetching security metrics")
 
-	// Get current security settings
-	forceEncryption, _ := h.db.GetSetting("force_encryption")
-	encryptionLevel, _ := h.db.GetSetting("encryption_level")
-	if encryptionLevel == "" {
-		encryptionLevel = "strong"
-	}
-
-	torEnabled := h.torrentClient.IsTorEnabled()
-	vpnType, _ := h.db.GetSetting("vpn_type")
-	if vpnType == "" {
-		vpnType = "none"
-	}
-
-	noLogsMode, _ := h.db.GetSetting("no_logs_mode")
-	obfuscateTraffic, _ := h.db.GetSetting("obfuscate_traffic")
-	dhtInvisibility, _ := h.db.GetSetting("dht_invisibility")
-	sharingDisabled, _ := h.db.GetSetting("sharing_disabled")
 	privacy := h.torrentClient.PrivacyStatus()
 
-	// Calculate scores
+	// Scores only reflect controls confirmed by the live torrent client.
 	encryptionScore := 0
-	if forceEncryption == "true" {
-		encryptionScore = 100
-	} else if encryptionLevel == "maximum" {
-		encryptionScore = 95
-	} else if encryptionLevel == "strong" {
-		encryptionScore = 85
-	} else if encryptionLevel == "standard" {
-		encryptionScore = 70
-	} else {
-		encryptionScore = 50
-	}
-
 	anonymityScore := 0
 	anonymityType := "Direct Connection"
-	if torEnabled {
+	if privacy.ProxyAvailable && privacy.IPObfuscation {
 		anonymityScore = 100
-		anonymityType = "Tor Network"
-	} else if vpnType == "vless" {
-		anonymityScore = 90
-		anonymityType = "VLESS VPN"
-	} else if vpnType == "outline" {
-		anonymityScore = 85
-		anonymityType = "Outline VPN"
-	}
-	if privacy.IPObfuscation && privacy.DNSObfuscation {
-		anonymityScore = min(100, anonymityScore+10)
+		anonymityType = "Tor Proxy Chain"
 	}
 
-	leakScore := 100
-	if !torEnabled && vpnType == "none" {
-		leakScore = 40
+	leakScore := 0
+	if privacy.DNSObfuscation {
+		leakScore += 40
 	}
-	if dhtInvisibility == "true" || dhtInvisibility == "" {
-		leakScore = min(100, leakScore+20)
+	if privacy.DHTInvisibility && privacy.PeerExchangeDisabled {
+		leakScore += 30
 	}
-	if sharingDisabled == "true" || sharingDisabled == "" {
-		leakScore = min(100, leakScore+10)
+	if privacy.InboundConnectionsDisabled && privacy.UDPTrackersBlocked {
+		leakScore += 30
 	}
 
 	obfuscationScore := 0
-	if obfuscateTraffic == "true" {
+	if privacy.TrafficObfuscation {
 		obfuscationScore = 100
 	}
 
-	// Calculate overall score
 	overallScore := (encryptionScore + anonymityScore + leakScore + obfuscationScore) / 4
-
-	// Add bonus for no-logs mode
-	if noLogsMode == "true" {
-		overallScore = min(100, overallScore+5)
-	}
 
 	metrics := SecurityMetrics{
 		OverallScore: overallScore,
 		Encryption: EncryptionMetrics{
-			Enabled: forceEncryption == "true",
-			Level:   encryptionLevel,
+			Enabled: false,
+			Level:   "not enforced by torrent client",
 			Score:   encryptionScore,
 		},
 		Anonymity: AnonymityMetrics{
-			Enabled: torEnabled || vpnType != "none",
+			Enabled: privacy.ProxyAvailable && privacy.IPObfuscation,
 			Type:    anonymityType,
 			Score:   anonymityScore,
 		},
 		LeakProtection: LeakMetrics{
-			Active:        torEnabled || vpnType != "none",
-			LeaksDetected: 0,
+			Active:        privacy.DNSObfuscation,
+			LeaksDetected: nil,
 			Score:         leakScore,
 		},
 		TrafficObfuscation: ObfuscationMetrics{
-			Enabled: obfuscateTraffic == "true",
+			Enabled: privacy.TrafficObfuscation,
 			Score:   obfuscationScore,
 		},
 		ActiveThreats:        0,

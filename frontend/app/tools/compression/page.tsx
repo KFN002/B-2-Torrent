@@ -14,7 +14,7 @@ import { toast } from "sonner"
 import { useLanguage } from "@/lib/i18n"
 import { Progress } from "@/components/ui/progress"
 
-type CompressionFormat = "gzip" | "deflate" | "deflate-raw" | "brotli" | "zstd" | "lzma"
+type CompressionFormat = "gzip" | "deflate" | "deflate-raw"
 
 export default function CompressionTool() {
   const { t } = useLanguage()
@@ -25,42 +25,6 @@ export default function CompressionTool() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [progress, setProgress] = useState(0)
   const [compressionRatio, setCompressionRatio] = useState<number | null>(null)
-
-  const customCompress = async (data: Uint8Array, format: CompressionFormat): Promise<Uint8Array> => {
-    // For Brotli, ZSTD, LZMA - simulate with multiple deflate passes for better compression
-    if (format === "brotli" || format === "zstd" || format === "lzma") {
-      // Use gzip with additional passes for better compression simulation
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(data)
-          controller.close()
-        },
-      })
-
-      const compressionStream = new CompressionStream("gzip")
-      const compressedStream = stream.pipeThrough(compressionStream)
-
-      const chunks: Uint8Array[] = []
-      const reader = compressedStream.getReader()
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        chunks.push(value)
-      }
-
-      const compressed = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.length, 0))
-      let offset = 0
-      for (const chunk of chunks) {
-        compressed.set(chunk, offset)
-        offset += chunk.length
-      }
-
-      return compressed
-    }
-
-    return data
-  }
 
   const handleCompress = async () => {
     if (!compressFile) {
@@ -80,22 +44,9 @@ export default function CompressionTool() {
 
     try {
       const originalSize = compressFile.size
-      const arrayBuffer = await compressFile.arrayBuffer()
-      const uint8Array = new Uint8Array(arrayBuffer)
-
-      let compressedData: Uint8Array
-      let fileExtension: string
-
-      if (compressionFormat === "brotli" || compressionFormat === "zstd" || compressionFormat === "lzma") {
-        setProgress(30)
-        compressedData = await customCompress(uint8Array, compressionFormat)
-        setProgress(70)
-        fileExtension = compressionFormat === "brotli" ? "br" : compressionFormat === "zstd" ? "zst" : "xz"
-      } else {
-        // Standard browser compression
-        const stream = compressFile.stream()
-        const compressionStream = new CompressionStream(compressionFormat)
-        const compressedStream = stream.pipeThrough(compressionStream)
+      const stream = compressFile.stream()
+      const compressionStream = new CompressionStream(compressionFormat)
+      const compressedStream = stream.pipeThrough(compressionStream)
 
         const chunks: Uint8Array[] = []
         const reader = compressedStream.getReader()
@@ -109,15 +60,13 @@ export default function CompressionTool() {
           setProgress(Math.min((bytesRead / originalSize) * 100, 99))
         }
 
-        compressedData = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.length, 0))
-        let offset = 0
-        for (const chunk of chunks) {
-          compressedData.set(chunk, offset)
-          offset += chunk.length
-        }
-
-        fileExtension = compressionFormat === "gzip" ? "gz" : compressionFormat === "deflate" ? "zz" : "raw"
+      const compressedData = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.length, 0))
+      let offset = 0
+      for (const chunk of chunks) {
+        compressedData.set(chunk, offset)
+        offset += chunk.length
       }
+      const fileExtension = compressionFormat === "gzip" ? "gz" : compressionFormat === "deflate" ? "zz" : "raw"
 
       const compressedSize = compressedData.length
       const ratio = ((1 - compressedSize / originalSize) * 100).toFixed(2)
@@ -164,48 +113,9 @@ export default function CompressionTool() {
     setProgress(0)
 
     try {
-      if (decompressionFormat === "brotli" || decompressionFormat === "zstd" || decompressionFormat === "lzma") {
-        setProgress(30)
-        // Use gzip decompression as fallback
-        const stream = decompressFile.stream()
-        const decompressionStream = new DecompressionStream("gzip")
-        const decompressedStream = stream.pipeThrough(decompressionStream)
-
-        const chunks: Uint8Array[] = []
-        const reader = decompressedStream.getReader()
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          chunks.push(value)
-          setProgress(Math.min(60 + chunks.length * 2, 99))
-        }
-
-        const decompressedData = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.length, 0))
-        let offset = 0
-        for (const chunk of chunks) {
-          decompressedData.set(chunk, offset)
-          offset += chunk.length
-        }
-
-        const blob = new Blob([decompressedData])
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement("a")
-        a.href = url
-        a.download = decompressFile.name.replace(/\.(br|zst|xz|gz|zz|raw)$/, "")
-        a.click()
-        URL.revokeObjectURL(url)
-
-        setProgress(100)
-        toast.success(t("decompressionSuccess"), {
-          description: `Extracted ${(decompressedData.length / 1024 / 1024).toFixed(2)} MB`,
-          duration: 5000,
-        })
-      } else {
-        // Standard browser decompression
-        const stream = decompressFile.stream()
-        const decompressionStream = new DecompressionStream(decompressionFormat)
-        const decompressedStream = stream.pipeThrough(decompressionStream)
+      const stream = decompressFile.stream()
+      const decompressionStream = new DecompressionStream(decompressionFormat)
+      const decompressedStream = stream.pipeThrough(decompressionStream)
 
         const chunks: Uint8Array[] = []
         const reader = decompressedStream.getReader()
@@ -226,20 +136,19 @@ export default function CompressionTool() {
           offset += chunk.length
         }
 
-        const blob = new Blob([decompressedData])
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement("a")
-        a.href = url
-        a.download = decompressFile.name.replace(/\.(gz|zz|raw)$/, "")
-        a.click()
-        URL.revokeObjectURL(url)
+      const blob = new Blob([decompressedData])
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = decompressFile.name.replace(/\.(gz|zz|raw)$/, "")
+      a.click()
+      URL.revokeObjectURL(url)
 
         setProgress(100)
         toast.success(t("decompressionSuccess"), {
           description: `Extracted ${(decompressedData.length / 1024 / 1024).toFixed(2)} MB`,
           duration: 5000,
         })
-      }
     } catch (error) {
       toast.error(t("decompressionFailed"), {
         description: "Invalid format or corrupted file",
@@ -277,8 +186,7 @@ export default function CompressionTool() {
               <div className="space-y-1">
                 <p className="text-sm font-medium text-foreground">Multiple Compression Formats</p>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Choose from GZIP, Deflate, Brotli, Zstandard, or LZMA. All processing is client-side for maximum
-                  privacy.
+                  Choose from browser-native GZIP and Deflate formats. Processing stays in this browser tab.
                 </p>
               </div>
             </CardContent>
@@ -338,9 +246,6 @@ export default function CompressionTool() {
                         <SelectItem value="gzip">GZIP (Best Compatibility)</SelectItem>
                         <SelectItem value="deflate">Deflate (Standard)</SelectItem>
                         <SelectItem value="deflate-raw">Deflate Raw (Minimal)</SelectItem>
-                        <SelectItem value="brotli">Brotli (High Compression)</SelectItem>
-                        <SelectItem value="zstd">Zstandard (Fast & Efficient)</SelectItem>
-                        <SelectItem value="lzma">LZMA (Maximum Compression)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -423,9 +328,6 @@ export default function CompressionTool() {
                         <SelectItem value="gzip">GZIP</SelectItem>
                         <SelectItem value="deflate">Deflate</SelectItem>
                         <SelectItem value="deflate-raw">Deflate Raw</SelectItem>
-                        <SelectItem value="brotli">Brotli</SelectItem>
-                        <SelectItem value="zstd">Zstandard</SelectItem>
-                        <SelectItem value="lzma">LZMA</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

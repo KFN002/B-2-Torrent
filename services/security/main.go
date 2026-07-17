@@ -28,22 +28,23 @@ func (s *server) GetSecurityStatus(ctx context.Context, req *pb.SecurityStatusRe
 	s.logger.Info("GetSecurityStatus called")
 
 	return &pb.SecurityStatusResponse{
-		KillSwitchActive:     true,
-		DnsProtectionActive:  true,
-		IpObfuscationActive:  true,
-		DataEncryptionActive: true,
-		OverallSecurityScore: 95,
+		KillSwitchActive:     false,
+		DnsProtectionActive:  false,
+		IpObfuscationActive:  false,
+		DataEncryptionActive: false,
+		OverallSecurityScore: 0,
 	}, nil
 }
 
 func (s *server) CheckLeaks(ctx context.Context, req *pb.LeakCheckRequest) (*pb.LeakCheckResponse, error) {
 	s.logger.Info("CheckLeaks called")
 
-	// Perform leak checks
+	// No external probe is implemented. Boolean fields remain false for proto
+	// compatibility; callers must use the message and treat the result as unknown.
 	return &pb.LeakCheckResponse{
 		IpLeakDetected:  false,
 		DnsLeakDetected: false,
-		Message:         "No leaks detected - connection is secure",
+		Message:         "Leak check not performed; no security conclusion is available",
 	}, nil
 }
 

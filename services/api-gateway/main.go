@@ -73,13 +73,18 @@ func main() {
 	if port == "" {
 		port = "8000"
 	}
+	bindAddress := os.Getenv("BIND_ADDRESS")
+	if bindAddress == "" {
+		bindAddress = "127.0.0.1"
+	}
 
 	srv := &http.Server{
-		Addr:         ":" + port,
-		Handler:      gateway.router,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:           bindAddress + ":" + port,
+		Handler:        gateway.router,
+		ReadTimeout:    15 * time.Second,
+		WriteTimeout:   15 * time.Second,
+		IdleTimeout:    60 * time.Second,
+		MaxHeaderBytes: 1 << 20,
 	}
 
 	log.Printf("API Gateway starting on port %s", port)
@@ -114,13 +119,14 @@ func (g *Gateway) handleSecurityStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return default secure status
+	// Fail closed: no downstream result means no controls have been verified.
 	status := map[string]interface{}{
-		"killSwitchActive":     true,
-		"dnsProtectionActive":  true,
-		"ipObfuscationActive":  true,
-		"dataEncryptionActive": true,
-		"overallSecurityScore": 95,
+		"verified":             false,
+		"killSwitchActive":     false,
+		"dnsProtectionActive":  false,
+		"ipObfuscationActive":  false,
+		"dataEncryptionActive": false,
+		"overallSecurityScore": 0,
 	}
 
 	data, _ := json.Marshal(status)

@@ -116,9 +116,21 @@ func main() {
 		dbURL = "postgres://torrentuser:torrentpass@localhost:5432/torrentdb?sslmode=disable"
 	}
 
-	db, err := database.New(dbURL)
+	var db *database.Database
+	var err error
+	for attempt := 1; attempt <= 5; attempt++ {
+		db, err = database.New(dbURL)
+		if err == nil {
+			break
+		}
+		if attempt < 5 {
+			delay := time.Duration(1<<(attempt-1)) * time.Second
+			logger.Warn("database unavailable; retrying", zap.Int("attempt", attempt), zap.Duration("delay", delay))
+			time.Sleep(delay)
+		}
+	}
 	if err != nil {
-		logger.Fatal("failed to connect to database", zap.Error(err))
+		logger.Fatal("failed to connect to database after bounded retries", zap.Error(err))
 	}
 	defer db.Close()
 
@@ -154,19 +166,21 @@ func main() {
 	readTimeout, _ := strconv.Atoi(getenvDefault("HTTP_READ_TIMEOUT_SECONDS", "10"))
 	writeTimeout, _ := strconv.Atoi(getenvDefault("HTTP_WRITE_TIMEOUT_SECONDS", "10"))
 	port := getenvDefault("PORT", "8080")
+	bindAddress := getenvDefault("BIND_ADDRESS", "127.0.0.1")
 
 	server := &http.Server{
-		Addr:           ":" + port,
-		Handler:        router,
-		ReadTimeout:    time.Duration(readTimeout) * time.Second,
-		WriteTimeout:   time.Duration(writeTimeout) * time.Second,
-		IdleTimeout:    30 * time.Second,
-		MaxHeaderBytes: 1 << 20,
+		Addr:              bindAddress + ":" + port,
+		Handler:           router,
+		ReadTimeout:       time.Duration(readTimeout) * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      time.Duration(writeTimeout) * time.Second,
+		IdleTimeout:       30 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Info("server listening", zap.String("port", port))
+		logger.Info("server listening", zap.String("address", server.Addr))
 		errCh <- server.ListenAndServe()
 	}()
 

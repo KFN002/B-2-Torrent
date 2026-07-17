@@ -16,6 +16,8 @@ import {
   Network,
   HardDrive,
   Lock,
+  Fingerprint,
+  Vault,
   ChevronDown,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
@@ -48,6 +50,7 @@ export function Navbar() {
     { href: "/", label: "Home", icon: Home },
     { href: "/torrents", label: "Torrents", icon: Download },
     { href: "/network", label: "Network", icon: Network },
+    { href: "/vault", label: "Vault", icon: Vault },
   ]
 
   const securityNav: NavItem[] = [
@@ -61,6 +64,7 @@ export function Navbar() {
     { href: "/ip-dashboard", label: "IP Dashboard", icon: Activity },
     { href: "/search", label: "Search", icon: Sparkles, beta: true },
     { href: "/about", label: "About", icon: Book },
+    { href: "/auth", label: "Identity", icon: Fingerprint },
   ]
 
   const allNavItems = [...primaryNav, ...securityNav, ...toolsNav]

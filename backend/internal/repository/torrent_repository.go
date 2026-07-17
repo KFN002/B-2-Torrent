@@ -37,8 +37,8 @@ func NewTorrentRepository(pool *pgxpool.Pool, logger *zap.Logger) *TorrentReposi
 
 func (r *TorrentRepository) GetAll(ctx context.Context, limit int) ([]Torrent, error) {
 	query := `
-		SELECT info_hash, name, total_size, downloaded, uploaded, 
-			   download_rate, upload_rate, progress, status, magnet_uri, created_at 
+		SELECT info_hash, name, total_size, downloaded, uploaded,
+			   download_rate, upload_rate, progress, status, '' AS magnet_uri, created_at
 		FROM active_torrents 
 		ORDER BY created_at DESC
 		LIMIT $1
@@ -88,7 +88,7 @@ func (r *TorrentRepository) Save(ctx context.Context, t *Torrent) error {
 	`
 
 	_, err := r.pool.Exec(ctx, query, t.InfoHash, t.Name, t.TotalSize, t.Downloaded,
-		t.Uploaded, t.DownloadRate, t.UploadRate, t.Progress, t.Status, t.MagnetURI)
+		t.Uploaded, t.DownloadRate, t.UploadRate, t.Progress, t.Status, "")
 	if err != nil {
 		r.logger.Error("Failed to save torrent", zap.Error(err), zap.String("info_hash", t.InfoHash))
 		return fmt.Errorf("failed to save torrent: %w", err)

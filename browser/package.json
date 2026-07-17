@@ -21,7 +21,7 @@
     "directories": {
       "output": "dist"
     },
-    "files": ["main.js", "preload.js", "renderer.js", "search-engine.js", "index.html", "styles.css"],
+    "files": ["main.js", "preload.js", "renderer.js", "index.html", "styles.css"],
     "asar": true,
     "win": {
       "target": ["nsis", "portable", "zip"],
@@ -49,9 +49,7 @@
     }
   },
   "dependencies": {
-    "electron-store": "^11.0.2",
-    "axios": "^1.16.0",
-    "cheerio": "^1.2.0"
+    "electron-store": "^11.0.2"
   },
   "devDependencies": {
     "electron": "^42.0.0",

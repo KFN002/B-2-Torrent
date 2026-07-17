@@ -3,7 +3,6 @@ package torrent
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -95,6 +94,8 @@ type PrivacyStatus struct {
 	UDPTrackersBlocked         bool `json:"udpTrackersBlocked"`
 	ProxyRequired              bool `json:"proxyRequired"`
 	ProxyAvailable             bool `json:"proxyAvailable"`
+	NoLogsMode                 bool `json:"noLogsMode"`
+	TrafficObfuscation         bool `json:"trafficObfuscation"`
 }
 
 func NewClient(proxyChainStr string, downloadDir string) (*Client, error) {
@@ -533,9 +534,7 @@ func (c *Client) GetProxyConnections() []ProxyConnection {
 	defer c.mu.RUnlock()
 
 	connections := make([]ProxyConnection, 0)
-	countries := []string{"US", "DE", "NL", "CH", "SE", "NO", "FR", "UK"}
-
-	// Generate mock connections based on proxy chain
+	// Report configured routes without inventing connection or geolocation data.
 	for i, proxy := range c.config.ProxyChain {
 		parts := strings.Split(proxy, ":")
 		address := parts[0]
@@ -544,20 +543,15 @@ func (c *Client) GetProxyConnections() []ProxyConnection {
 			fmt.Sscanf(parts[1], "%d", &port)
 		}
 
-		status := "connected"
-		if rand.Float32() < 0.1 {
-			status = "connecting"
-		}
-
 		conn := ProxyConnection{
 			ID:        fmt.Sprintf("proxy-%d", i),
 			Address:   address,
 			Port:      port,
-			Country:   countries[rand.Intn(len(countries))],
-			Status:    status,
-			Latency:   50 + rand.Intn(200),
-			Bandwidth: rand.Float64() * 1024 * 10,
-			Uptime:    rand.Intn(7200),
+			Country:   "unknown",
+			Status:    "configured",
+			Latency:   0,
+			Bandwidth: 0,
+			Uptime:    0,
 		}
 		connections = append(connections, conn)
 	}
@@ -569,14 +563,13 @@ func (c *Client) SetTorEnabled(enabled bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.torEnabled = enabled
-	c.config.TorEnabled = enabled
-
-	c.logger.Info("Tor network toggled",
-		zap.Bool("enabled", enabled),
-	)
-
-	return nil
+	if enabled == c.torEnabled {
+		return nil
+	}
+	// anacrolix dialers are fixed when the client is created. Pretending to
+	// toggle this flag at runtime could expose direct traffic or report a proxy
+	// that is not actually in use.
+	return fmt.Errorf("changing Tor routing requires an application restart")
 }
 
 func (c *Client) IsTorEnabled() bool {
@@ -672,6 +665,8 @@ func (c *Client) PrivacyStatus() PrivacyStatus {
 		UDPTrackersBlocked:         c.config.IPObfuscation || c.config.DNSObfuscation,
 		ProxyRequired:              c.config.IPObfuscation || c.config.DNSObfuscation,
 		ProxyAvailable:             proxyAvailable,
+		NoLogsMode:                 c.config.NoLogsMode,
+		TrafficObfuscation:         c.config.ObfuscateTraffic,
 	}
 }
 

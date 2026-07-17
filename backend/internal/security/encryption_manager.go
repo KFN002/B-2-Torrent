@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"strings"
 
 	"go.uber.org/zap"
 	"golang.org/x/crypto/argon2"
@@ -133,7 +134,7 @@ func (em *EncryptionManager) EncryptFile(inputPath, outputPath, password string)
 	}
 
 	// Write encrypted file: salt + nonce + ciphertext
-	output, err := os.Create(outputPath)
+	output, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
@@ -171,13 +172,34 @@ func (em *EncryptionManager) DecryptFile(inputPath, outputPath, password string)
 	}
 
 	// Parse header
-	headerEnd := 0
+	headerEnd := -1
 	for i, b := range data {
+		if i > 256 {
+			break
+		}
 		if b == '\n' {
 			headerEnd = i + 1
 			break
 		}
 	}
+	if headerEnd < 0 {
+		return fmt.Errorf("invalid or missing encryption header")
+	}
+	header := strings.TrimSuffix(string(data[:headerEnd]), "\n")
+	parts := strings.Split(header, ":")
+	if len(parts) != 4 || parts[0] != "B2ENCRYPT" {
+		return fmt.Errorf("invalid encryption header")
+	}
+	if parts[1] != "AES-256-GCM" && parts[1] != "ChaCha20-Poly1305" {
+		return fmt.Errorf("unsupported encryption algorithm in header")
+	}
+	if parts[2] != "PBKDF2" && parts[2] != "Argon2id" && parts[2] != "scrypt" {
+		return fmt.Errorf("unsupported key derivation function in header")
+	}
+	if parts[3] != "SHA-256" && parts[3] != "SHA-512" {
+		return fmt.Errorf("unsupported hash algorithm in header")
+	}
+	em.config.Algorithm, em.config.KeyDerivation, em.config.HashAlgorithm = parts[1], parts[2], parts[3]
 
 	data = data[headerEnd:] // Skip header
 	if len(data) < 32 {
@@ -248,8 +270,18 @@ func (em *EncryptionManager) DecryptFile(inputPath, outputPath, password string)
 	}
 
 	// Write decrypted file
-	if err := os.WriteFile(outputPath, plaintext, 0600); err != nil {
+	output, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	if _, err := output.Write(plaintext); err != nil {
+		output.Close()
+		_ = os.Remove(outputPath)
 		return fmt.Errorf("failed to write output file: %w", err)
+	}
+	if err := output.Close(); err != nil {
+		_ = os.Remove(outputPath)
+		return fmt.Errorf("failed to finalize output file: %w", err)
 	}
 
 	return nil

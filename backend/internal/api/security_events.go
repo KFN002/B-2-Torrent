@@ -155,46 +155,23 @@ func countUnencryptedPeers(tc *torrent.Client) int {
 	return 0
 }
 
-func calculateSecurityScore(db *database.Database, tc *torrent.Client) int {
+func calculateSecurityScore(_ *database.Database, tc *torrent.Client) int {
 	score := 0
-
-	killSwitch, _ := db.GetSetting("kill_switch_enabled")
-	if boolSettingOrDefault(killSwitch, true) {
+	privacy := tc.PrivacyStatus()
+	if privacy.ProxyAvailable && privacy.IPObfuscation {
 		score += 20
 	}
-
-	dnsProtection, _ := db.GetSetting("dns_protection_enabled")
-	if boolSettingOrDefault(dnsProtection, true) {
+	if privacy.DNSObfuscation {
 		score += 20
 	}
-
-	forceEncryption, _ := db.GetSetting("force_encryption")
-	if boolSettingOrDefault(forceEncryption, true) {
+	if privacy.DHTInvisibility && privacy.PeerExchangeDisabled {
 		score += 20
 	}
-
-	noLogsMode, _ := db.GetSetting("no_logs_mode")
-	if noLogsMode == "true" {
+	if privacy.SharingDisabled {
 		score += 20
 	}
-
-	obfuscation, _ := db.GetSetting("obfuscate_traffic")
-	if obfuscation == "true" {
+	if privacy.NoLogsMode && privacy.TrafficObfuscation {
 		score += 20
-	}
-
-	dhtInvisibility, _ := db.GetSetting("dht_invisibility")
-	if boolSettingOrDefault(dhtInvisibility, true) {
-		score += 10
-	}
-
-	sharingDisabled, _ := db.GetSetting("sharing_disabled")
-	if boolSettingOrDefault(sharingDisabled, true) {
-		score += 10
-	}
-
-	if score > 100 {
-		return 100
 	}
 	return score
 }

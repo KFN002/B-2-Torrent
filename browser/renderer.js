@@ -171,8 +171,12 @@ async function navigate(url) {
 
   // Check if this is a search query (not a URL)
   if (!url.includes(".") && !url.startsWith("http")) {
-    await handleB2Search(url)
-    return
+    const proxy = await window.electronAPI.getProxy()
+    if (!proxy?.enabled) {
+      await handleB2Search(url)
+      return
+    }
+    url = `https://duckduckgo.com/?q=${encodeURIComponent(url.trim())}`
   }
 
   // Handle URL navigation
@@ -332,7 +336,7 @@ saveProxyBtn.addEventListener("click", async () => {
   }
   renderBrowserProtection()
 
-  alert("Proxy settings saved. Please reload the page for changes to take effect.")
+  alert("Proxy settings saved and applied to all open tabs.")
 })
 
 cancelProxyBtn.addEventListener("click", () => {

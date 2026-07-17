@@ -149,6 +149,18 @@
   body {
     @apply bg-background text-foreground;
     color-scheme: dark;
+    min-width: 320px;
+    background-image:
+      radial-gradient(circle at 15% -10%, oklch(0.62 0.16 155 / 0.08), transparent 32rem),
+      radial-gradient(circle at 90% 0%, oklch(0.58 0.16 250 / 0.08), transparent 34rem);
+  }
+
+  ::selection {
+    background: oklch(0.72 0.16 155 / 0.35);
+  }
+
+  :focus-visible {
+    scroll-margin-block: 6rem;
   }
 
   /* Enhanced desktop optimization for Full HD to 4K displays */
@@ -162,6 +174,17 @@
     @media (min-width: 3840px) {
       max-width: 3600px;
     }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

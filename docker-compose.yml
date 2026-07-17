@@ -12,7 +12,7 @@ services:
       frontend:
         condition: service_healthy
     networks:
-      - torrent-network
+      - edge
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/nginx-health"]
@@ -35,24 +35,36 @@ services:
       - /var/cache/nginx
       - /var/run
       - /var/log/nginx
+    pids_limit: 128
+    stop_grace_period: 10s
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}
     image: b2torrent-frontend:latest
     container_name: b2torrent-frontend
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_URL: /api
       NEXT_PUBLIC_ENABLE_EXTERNAL_LEAK_CHECKS: ${NEXT_PUBLIC_ENABLE_EXTERNAL_LEAK_CHECKS:-false}
-    ports:
-      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}
+      SUPABASE_INTERNAL_URL: ${SUPABASE_INTERNAL_URL:-http://host.docker.internal:8000}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:-}
+    expose:
+      - "3000"
     depends_on:
       backend:
         condition: service_healthy
     networks:
-      - torrent-network
+      - edge
+      - auth-egress
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000"]
@@ -67,6 +79,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    pids_limit: 256
+    stop_grace_period: 15s
 
   backend:
     build:
@@ -77,6 +91,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 8080
+      BIND_ADDRESS: 0.0.0.0
       DATABASE_URL: postgres://${POSTGRES_USER:-torrentuser}:${DB_PASSWORD:?Run node scripts/gen-env.mjs first}@postgres:5432/${POSTGRES_DB:-torrentdb}?sslmode=disable
       DOWNLOAD_DIR: /data/downloads
       PROXY_CHAIN: ${PROXY_CHAIN:-tor:9050}
@@ -84,9 +99,11 @@ services:
       NO_LOGS_MODE: ${NO_LOGS_MODE:-true}
       OBFUSCATE_TRAFFIC: ${OBFUSCATE_TRAFFIC:-true}
       LOG_LEVEL: ${LOG_LEVEL:-warn}
+      DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-25}
+      DB_MAX_IDLE_CONNS: ${DB_MAX_IDLE_CONNS:-10}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://localhost:3000,http://127.0.0.1,http://127.0.0.1:3000}
-    ports:
-      - "127.0.0.1:${BACKEND_PORT:-8080}:8080"
+    expose:
+      - "8080"
     volumes:
       - ${DOWNLOAD_DIR:-./downloads}:/data/downloads
     depends_on:
@@ -99,7 +116,9 @@ services:
       tor:
         condition: service_healthy
     networks:
-      - torrent-network
+      - edge
+      - data
+      - privacy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
@@ -114,6 +133,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    pids_limit: 512
+    stop_grace_period: 30s
 
   postgres:
     image: postgres:18.3-alpine
@@ -127,10 +148,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     networks:
-      - torrent-network
+      - data
     restart: unless-stopped
     command: >
       postgres
@@ -151,6 +170,9 @@ services:
       start_period: 10s
     security_opt:
       - no-new-privileges:true
+    shm_size: 256mb
+    pids_limit: 256
+    stop_grace_period: 60s
 
   redis:
     image: redis:8.6-alpine
@@ -163,12 +185,10 @@ services:
       --save 60 1000
       --timeout 300
       --tcp-keepalive 60
-    ports:
-      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     networks:
-      - torrent-network
+      - data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -178,6 +198,13 @@ services:
       start_period: 5s
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    pids_limit: 128
+    stop_grace_period: 20s
 
   rabbitmq:
     image: rabbitmq:4.3-management-alpine
@@ -186,13 +213,10 @@ services:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-b2t_admin}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:?Run node scripts/gen-env.mjs first}
       RABBITMQ_VM_MEMORY_HIGH_WATERMARK: 0.6
-    ports:
-      - "127.0.0.1:${RABBITMQ_PORT:-5672}:5672"
-      - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     networks:
-      - torrent-network
+      - data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
@@ -202,14 +226,17 @@ services:
       start_period: 20s
     security_opt:
       - no-new-privileges:true
+    pids_limit: 256
+    stop_grace_period: 30s
 
   tor:
     image: dperson/torproxy:latest
     container_name: b2torrent-tor
-    ports:
-      - "127.0.0.1:${TOR_SOCKS_PORT:-9050}:9050"
+    expose:
+      - "9050"
     networks:
-      - torrent-network
+      - privacy
+      - tor-egress
     restart: unless-stopped
     environment:
       TOR_LOG: notice
@@ -221,6 +248,8 @@ services:
       start_period: 30s
     security_opt:
       - no-new-privileges:true
+    pids_limit: 128
+    stop_grace_period: 30s
 
 volumes:
   postgres_data:
@@ -228,8 +257,31 @@ volumes:
   rabbitmq_data:
 
 networks:
-  torrent-network:
+  edge:
     driver: bridge
+    internal: true
     ipam:
       config:
         - subnet: 172.20.0.0/16
+  data:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+  privacy:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.22.0.0/16
+  auth-egress:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.23.0.0/16
+  tor-egress:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.24.0.0/16

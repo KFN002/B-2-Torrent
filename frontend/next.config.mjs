@@ -1,3 +1,10 @@
+const configuredConnectOrigins = [process.env.NEXT_PUBLIC_SUPABASE_URL]
+  .filter(Boolean)
+  .map((value) => {
+    try { return new URL(value).origin } catch { return "" }
+  })
+  .filter(Boolean)
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
@@ -34,10 +41,6 @@ const nextConfig = {
             value: 'off'
           },
           {
-            key: 'Strict-Transport-Security',
-            value: 'max-age=63072000; includeSubDomains; preload'
-          },
-          {
             key: 'X-Frame-Options',
             value: 'DENY'
           },
@@ -60,6 +63,10 @@ const nextConfig = {
           {
             key: 'Cross-Origin-Resource-Policy',
             value: 'same-origin'
+          },
+          {
+            key: 'Content-Security-Policy',
+            value: `default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' ${configuredConnectOrigins.join(' ')}`
           },
         ],
       },

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/KFN002/B-2-Torrent/backend/internal/database"
@@ -283,6 +285,26 @@ func (h *Handlers) ApplyInitialConfig(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+	if req.EnableVPN {
+		h.writeError(w, http.StatusBadRequest, "Configure VLESS or Outline in the standalone VPN client; the backend cannot activate them")
+		return
+	}
+	if req.EnableEncryption {
+		h.writeError(w, http.StatusBadRequest, "Torrent transport encryption is not enforced by this backend; use the local file encryption tool for data at rest")
+		return
+	}
+	if req.MaxConnections < 1 || req.MaxConnections > 1000 {
+		h.writeError(w, http.StatusBadRequest, "Max connections must be between 1 and 1000")
+		return
+	}
+	if req.PortNumber < 1 || req.PortNumber > 65535 {
+		h.writeError(w, http.StatusBadRequest, "Port number must be between 1 and 65535")
+		return
+	}
+	if err := h.torrentClient.SetTorEnabled(req.EnableTor); err != nil {
+		h.writeError(w, http.StatusConflict, err.Error())
+		return
+	}
 
 	if req.DownloadPath != "" {
 		_ = h.db.SetSetting("download_path", req.DownloadPath)
@@ -308,7 +330,6 @@ func (h *Handlers) ApplyInitialConfig(w http.ResponseWriter, r *http.Request) {
 	_ = h.db.SetSetting("reject_plaintext", fmt.Sprintf("%t", req.EnableEncryption))
 	_ = h.db.SetSetting("no_logs_mode", fmt.Sprintf("%t", req.EnableNoLogs))
 	_ = h.db.SetSetting("obfuscate_traffic", "true")
-	_ = h.torrentClient.SetTorEnabled(req.EnableTor)
 	h.torrentClient.SetNoLogsMode(req.EnableNoLogs)
 	h.torrentClient.SetTrafficObfuscation(true)
 
@@ -333,7 +354,15 @@ func (h *Handlers) HealthCheck(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) CleanupData(w http.ResponseWriter, r *http.Request) {
-	h.logger.Info("Cleaning up all user data and logs")
+	var request struct {
+		Confirm         string `json:"confirm"`
+		DeleteDownloads bool   `json:"deleteDownloads"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Confirm != "DELETE_ALL_LOCAL_DATA" {
+		h.writeError(w, http.StatusBadRequest, "Cleanup requires confirm=DELETE_ALL_LOCAL_DATA")
+		return
+	}
+	h.logger.Warn("Cleaning local application state", zap.Bool("deleteDownloads", request.DeleteDownloads))
 
 	// Stop and remove all active torrents
 	torrents := h.torrentClient.GetAllTorrents()
@@ -355,10 +384,52 @@ func (h *Handlers) CleanupData(w http.ResponseWriter, r *http.Request) {
 	// Clear all settings (except system settings)
 	if err := h.db.ClearUserSettings(); err != nil {
 		h.logger.Error("Failed to cleanup user settings", zap.Error(err))
+		h.writeError(w, http.StatusInternalServerError, "Torrent state was cleared, but settings cleanup failed")
+		return
 	}
 
-	h.logger.Info("All user data and logs cleaned successfully")
-	h.writeJSON(w, http.StatusOK, map[string]string{"message": "All user data and logs deleted"})
+	for _, key := range []string{"TEMP_DIR", "UPLOAD_DIR"} {
+		if err := removeDirectoryContents(os.Getenv(key)); err != nil {
+			h.logger.Error("Failed to clear temporary data", zap.String("directory", key), zap.Error(err))
+			h.writeError(w, http.StatusInternalServerError, "Database state was cleared, but temporary file cleanup failed")
+			return
+		}
+	}
+	if request.DeleteDownloads {
+		if err := removeDirectoryContents(os.Getenv("DOWNLOAD_DIR")); err != nil {
+			h.logger.Error("Failed to clear downloads", zap.Error(err))
+			h.writeError(w, http.StatusInternalServerError, "Application state was cleared, but download cleanup failed")
+			return
+		}
+	}
+
+	h.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"message":          "Local application state deleted",
+		"downloadsDeleted": request.DeleteDownloads,
+	})
+}
+
+func removeDirectoryContents(root string) error {
+	if root == "" {
+		return nil
+	}
+	cleanRoot, err := filepath.Abs(root)
+	if err != nil || cleanRoot == string(filepath.Separator) {
+		return fmt.Errorf("unsafe cleanup root")
+	}
+	entries, err := os.ReadDir(cleanRoot)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if err := os.RemoveAll(filepath.Join(cleanRoot, entry.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (h *Handlers) ToggleFavorite(w http.ResponseWriter, r *http.Request) {

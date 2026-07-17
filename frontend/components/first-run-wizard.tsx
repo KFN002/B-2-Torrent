@@ -29,9 +29,9 @@ export function FirstRunWizard() {
   const [progress, setProgress] = useState(25)
   const [config, setConfig] = useState<SetupConfig>({
     downloadPath: "",
-    enableVPN: true,
+    enableVPN: false,
     enableTor: false,
-    enableEncryption: true,
+    enableEncryption: false,
     enableNoLogs: true,
     vpnProtocol: "vless",
     maxConnections: 100,
@@ -42,6 +42,14 @@ export function FirstRunWizard() {
     const hasCompletedSetup = localStorage.getItem("b2t_setup_completed")
     if (!hasCompletedSetup) {
       setOpen(true)
+      fetch("/api/security/config", { cache: "no-store" })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((status) => {
+          if (status && typeof status.torEnabled === "boolean") {
+            setConfig((current) => ({ ...current, enableTor: status.torEnabled }))
+          }
+        })
+        .catch(() => {})
     }
   }, [])
 
@@ -61,13 +69,18 @@ export function FirstRunWizard() {
 
   const completeSetup = async () => {
     try {
-      await fetch("/api/config/initial", {
+      const response = await fetch("/api/config/initial", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),
-      }).catch(() => {})
-    } catch {
-      // Backend may not be running yet
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        throw new Error(payload?.error || "The local backend rejected this configuration")
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to save setup")
+      return
     }
 
     localStorage.setItem("b2t_setup_completed", "true")
@@ -106,12 +119,12 @@ export function FirstRunWizard() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                     <div className="space-y-1">
-                      <Label>Force Encryption</Label>
-                      <p className="text-xs text-muted-foreground">Reject unencrypted connections</p>
+                      <Label>Forced torrent encryption</Label>
+                      <p className="text-xs text-muted-foreground">Unavailable in this backend; use local file encryption instead</p>
                     </div>
                     <Switch
                       checked={config.enableEncryption}
-                      onCheckedChange={(v) => setConfig({ ...config, enableEncryption: v })}
+                      disabled
                     />
                   </div>
 
@@ -139,30 +152,30 @@ export function FirstRunWizard() {
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold">Network Configuration</h3>
-                    <p className="text-sm text-muted-foreground">Set up VPN and Tor</p>
+                    <p className="text-sm text-muted-foreground">Review routing configured at startup</p>
                   </div>
                 </div>
 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                     <div className="space-y-1">
-                      <Label>Enable VPN</Label>
-                      <p className="text-xs text-muted-foreground">Route traffic through VPN</p>
+                      <Label>Standalone VPN client</Label>
+                      <p className="text-xs text-muted-foreground">Configure VLESS or Outline in the desktop VPN app</p>
                     </div>
                     <Switch
                       checked={config.enableVPN}
-                      onCheckedChange={(v) => setConfig({ ...config, enableVPN: v })}
+                      disabled
                     />
                   </div>
 
                   <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                     <div className="space-y-1">
-                      <Label>Enable Tor Network</Label>
-                      <p className="text-xs text-muted-foreground">Anonymous onion routing</p>
+                      <Label>Tor proxy route</Label>
+                      <p className="text-xs text-muted-foreground">Read-only here; change TOR_ENABLED and restart the backend</p>
                     </div>
                     <Switch
                       checked={config.enableTor}
-                      onCheckedChange={(v) => setConfig({ ...config, enableTor: v })}
+                      disabled
                     />
                   </div>
 

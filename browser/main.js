@@ -1,6 +1,5 @@
 const { app, BrowserWindow, ipcMain, session, Menu, BrowserView } = require("electron")
 const path = require("path")
-const B2SearchEngine = require("./search-engine")
 
 app.commandLine.appendSwitch("disable-http-cache")
 app.commandLine.appendSwitch("disable-gpu-shader-disk-cache")
@@ -170,13 +169,12 @@ const DEFAULT_BROWSER_SETTINGS = {
 let mainWindow
 let proxyConfig = null
 let store
-let searchEngine
 const tabs = new Map() // Store tab ID -> BrowserView mapping
 let activeTabId = null
 let tabCounter = 0
 
 async function initializeStorage() {
-  if (store && searchEngine) return
+  if (store) return
 
   const { default: Store } = await import("electron-store")
   store = new Store({
@@ -184,7 +182,6 @@ async function initializeStorage() {
     clearInvalidConfig: true,
     encryptionKey: "b2-secure-random-key-" + Date.now(),
   })
-  searchEngine = new B2SearchEngine(store)
 }
 
 const securityHeaders = {
@@ -720,6 +717,7 @@ ipcMain.handle("clear-data", async () => {
 
 ipcMain.handle("set-proxy", async (event, config) => {
   const ses = mainWindow.webContents.session
+  const tabSessions = [...tabs.values()].filter((view) => !view.isDestroyed()).map((view) => view.webContents.session)
   if (config && config.enabled) {
     const port = Number.parseInt(config.port, 10)
     if (!["socks5", "http"].includes(config.type) || !config.host || !Number.isInteger(port) || port < 1 || port > 65535) {
@@ -731,11 +729,11 @@ ipcMain.handle("set-proxy", async (event, config) => {
         ? `socks5://${config.host}:${port}`
         : `http=${config.host}:${port};https=${config.host}:${port}`
 
-    await ses.setProxy({ proxyRules })
+    await Promise.all([ses, ...tabSessions].map((targetSession) => targetSession.setProxy({ proxyRules })))
     proxyConfig = proxyRules
     store.set("proxy", { ...config, port })
   } else {
-    await ses.setProxy({})
+    await Promise.all([ses, ...tabSessions].map((targetSession) => targetSession.setProxy({ mode: "direct" })))
     proxyConfig = null
     store.delete("proxy")
   }
@@ -801,27 +799,32 @@ ipcMain.handle("get-browser-info", () => {
       "DNT header",
       "GPC header",
       "Tor/VPN proxy support",
-      "Privacy-focused search engines",
+      "Proxy-gated search navigation",
     ],
   }
 })
 
-ipcMain.handle("b2-search", async (event, query) => {
-  if (!searchEngine) {
-    return { error: true, message: "Search engine unavailable.", query }
+ipcMain.handle("b2-search", (_event, query) => {
+  return {
+    blocked: true,
+    reason: "Direct search aggregation is disabled because it could bypass the configured browser proxy.",
+    query: String(query || ""),
   }
-  const results = await searchEngine.search(query)
-  return results
 })
 
 ipcMain.handle("get-search-settings", () => {
-  if (!searchEngine) return {}
-  return searchEngine.loadSettings()
+  return store.get("searchSettings", {})
 })
 
 ipcMain.handle("save-search-settings", (event, settings) => {
-  if (!searchEngine) return { success: false, error: "Search engine unavailable" }
-  searchEngine.saveSettings(settings)
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+    return { success: false, error: "Invalid search settings" }
+  }
+  store.set("searchSettings", {
+    safeSearch: settings.safeSearch !== false,
+    violentContent: ["filter", "block"].includes(settings.violentContent) ? settings.violentContent : "filter",
+    adultContent: ["filter", "block"].includes(settings.adultContent) ? settings.adultContent : "filter",
+  })
   return { success: true }
 })
 

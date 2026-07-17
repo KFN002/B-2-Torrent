@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -37,8 +39,10 @@ func New(dbURL string) (*Database, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(10)
+	maxOpen := boundedEnvInt("DB_MAX_OPEN_CONNS", 25, 2, 200)
+	maxIdle := boundedEnvInt("DB_MAX_IDLE_CONNS", 10, 1, maxOpen)
+	db.SetMaxOpenConns(maxOpen)
+	db.SetMaxIdleConns(maxIdle)
 	db.SetConnMaxLifetime(10 * time.Minute)
 	db.SetConnMaxIdleTime(5 * time.Minute)
 
@@ -50,6 +54,14 @@ func New(dbURL string) (*Database, error) {
 	}
 
 	return &Database{db: db}, nil
+}
+
+func boundedEnvInt(key string, fallback, minimum, maximum int) int {
+	value, err := strconv.Atoi(os.Getenv(key))
+	if err != nil || value < minimum || value > maximum {
+		return fallback
+	}
+	return value
 }
 
 func (d *Database) Close() error {
@@ -85,7 +97,7 @@ func (d *Database) SaveTorrent(t *Torrent) error {
 			updated_at = CURRENT_TIMESTAMP
 	`
 	_, err := d.db.ExecContext(ctx, query, t.InfoHash, t.Name, t.TotalSize, t.Downloaded,
-		t.Uploaded, t.DownloadRate, t.UploadRate, t.Progress, t.Status, t.MagnetURI)
+		t.Uploaded, t.DownloadRate, t.UploadRate, t.Progress, t.Status, "")
 	if err != nil {
 		return fmt.Errorf("failed to save torrent: %w", err)
 	}
@@ -97,8 +109,8 @@ func (d *Database) GetAllTorrents() ([]Torrent, error) {
 	defer cancel()
 
 	query := `
-		SELECT info_hash, name, total_size, downloaded, uploaded, 
-			   download_rate, upload_rate, progress, status, magnet_uri, created_at 
+		SELECT info_hash, name, total_size, downloaded, uploaded,
+			   download_rate, upload_rate, progress, status, '' AS magnet_uri, created_at
 		FROM active_torrents 
 		ORDER BY created_at DESC
 		LIMIT 1000
