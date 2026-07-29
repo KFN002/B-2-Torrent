@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package torrent;
 
-option go_package = "github.com/KFN002/B-2-Torrent/proto/torrent";
+option go_package = "github.com/KFN002/B-2-Torrent/services/proto/torrent";
 
 service TorrentService {
   rpc AddTorrent(AddTorrentRequest) returns (TorrentResponse);

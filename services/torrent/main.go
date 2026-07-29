@@ -2,18 +2,16 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
-	"github.com/KFN002/B-2-Torrent/backend/internal/repository"
-	"github.com/KFN002/B-2-Torrent/backend/internal/service"
 	"github.com/KFN002/B-2-Torrent/backend/pkg/cache"
 	"github.com/KFN002/B-2-Torrent/backend/pkg/database"
 	"github.com/KFN002/B-2-Torrent/backend/pkg/messaging"
-	pb "github.com/KFN002/B-2-Torrent/proto/torrent"
+	pb "github.com/KFN002/B-2-Torrent/services/proto/torrent"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -23,9 +21,8 @@ import (
 
 type server struct {
 	pb.UnimplementedTorrentServiceServer
-	service *service.TorrentService
-	logger  *zap.Logger
-	mq      *messaging.RabbitMQ
+	logger *zap.Logger
+	mq     *messaging.RabbitMQ
 }
 
 func (s *server) AddTorrent(ctx context.Context, req *pb.AddTorrentRequest) (*pb.TorrentResponse, error) {
@@ -46,13 +43,18 @@ func (s *server) GetTorrents(ctx context.Context, req *pb.GetTorrentsRequest) (*
 
 	return &pb.TorrentsListResponse{
 		Torrents: torrents,
-		Total:    int32(len(torrents)),
+		Total:    0,
 	}, nil
 }
 
 func main() {
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
+	logger, err := zap.NewProduction()
+	if err != nil {
+		panic("failed to initialize logger")
+	}
+	defer func() {
+		_ = logger.Sync()
+	}()
 
 	logger.Info("Starting Torrent Microservice")
 
@@ -77,17 +79,12 @@ func main() {
 		defer mq.Close()
 	}
 
-	// Initialize repositories and services
-	torrentRepo := repository.NewTorrentRepository(pool, logger)
-	torrentService := service.NewTorrentService(torrentRepo, logger)
-
 	// Create gRPC server
 	grpcServer := grpc.NewServer()
 
 	torrentServer := &server{
-		service: torrentService,
-		logger:  logger,
-		mq:      mq,
+		logger: logger,
+		mq:     mq,
 	}
 
 	pb.RegisterTorrentServiceServer(grpcServer, torrentServer)
@@ -101,12 +98,16 @@ func main() {
 	reflection.Register(grpcServer)
 
 	// Start server
-	port := os.Getenv("GRPC_PORT")
-	if port == "" {
-		port = "50052"
+	port := 50052
+	if value := os.Getenv("GRPC_PORT"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > 65535 {
+			logger.Fatal("GRPC_PORT must be a number between 1 and 65535")
+		}
+		port = parsed
 	}
 
-	lis, err := net.Listen("tcp", ":"+port)
+	lis, err := net.Listen("tcp", net.JoinHostPort("", strconv.Itoa(port)))
 	if err != nil {
 		logger.Fatal("Failed to listen", zap.Error(err))
 	}
@@ -121,7 +122,7 @@ func main() {
 		grpcServer.GracefulStop()
 	}()
 
-	logger.Info("Torrent service listening", zap.String("port", port))
+	logger.Info("Torrent service listening", zap.Int("port", port))
 	if err := grpcServer.Serve(lis); err != nil {
 		logger.Fatal("Failed to serve", zap.Error(err))
 	}

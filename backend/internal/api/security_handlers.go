@@ -186,16 +186,6 @@ func (h *Handlers) GetSecurityConfig(w http.ResponseWriter, r *http.Request) {
 	dhtInvisibility, _ := h.db.GetSetting("dht_invisibility")
 	sharingDisabled, _ := h.db.GetSetting("sharing_disabled")
 
-	forceEncryption, _ := h.db.GetSetting("force_encryption")
-	encryptionLevel, _ := h.db.GetSetting("encryption_level")
-	if encryptionLevel == "" {
-		encryptionLevel = "strong"
-	}
-	minProtocol, _ := h.db.GetSetting("min_encryption_protocol")
-	if minProtocol == "" {
-		minProtocol = "AES-256"
-	}
-	rejectPlaintext, _ := h.db.GetSetting("reject_plaintext")
 	macRandomization, _ := h.db.GetSetting("mac_randomization")
 	antiFingerprint, _ := h.db.GetSetting("anti_fingerprint")
 	secureDelete, _ := h.db.GetSetting("secure_delete")
@@ -222,10 +212,10 @@ func (h *Handlers) GetSecurityConfig(w http.ResponseWriter, r *http.Request) {
 		OutlineKey:            "",
 		NoLogsMode:            noLogsMode == "true",
 		ObfuscateTraffic:      obfuscateTraffic == "true",
-		ForceEncryption:       forceEncryption == "true" || forceEncryption == "",
-		EncryptionLevel:       encryptionLevel,
-		MinEncryptionProtocol: minProtocol,
-		RejectPlaintext:       rejectPlaintext == "true" || rejectPlaintext == "",
+		ForceEncryption:       false,
+		EncryptionLevel:       "not-enforced",
+		MinEncryptionProtocol: "not-enforced",
+		RejectPlaintext:       false,
 		MACRandomization:      macRandomization == "true",
 		AntiFingerprint:       antiFingerprint == "true",
 		SecureDelete:          secureDelete == "true" || secureDelete == "",
@@ -261,6 +251,13 @@ func (h *Handlers) UpdateSecuritySettings(w http.ResponseWriter, r *http.Request
 		config.SharingDisabled = true
 		config.SecureDelete = true
 	}
+	// The torrent library does not expose transport-encryption enforcement.
+	// Keep these compatibility fields explicitly disabled instead of persisting
+	// a setting that would give users a false sense of protection.
+	config.ForceEncryption = false
+	config.EncryptionLevel = "not-enforced"
+	config.MinEncryptionProtocol = "not-enforced"
+	config.RejectPlaintext = false
 
 	h.logger.Info("Updating security settings",
 		zap.Bool("killSwitch", config.KillSwitchEnabled),
@@ -344,10 +341,6 @@ func (h *Handlers) UpdateSecuritySettings(w http.ResponseWriter, r *http.Request
 	h.torrentClient.SetSharingDisabled(config.SharingDisabled)
 	_ = h.db.SetSetting("ip_obfuscation_enabled", fmt.Sprintf("%t", actualIPObfuscation))
 	_ = h.db.SetSetting("dns_obfuscation_enabled", fmt.Sprintf("%t", actualDNSObfuscation))
-
-	if config.ForceEncryption {
-		h.logger.Info("Force encryption enabled - all unencrypted connections will be rejected")
-	}
 
 	if config.DHTInvisibility {
 		h.logger.Info("DHT invisibility enabled - DHT announce/query participation and PEX remain disabled")
@@ -552,7 +545,8 @@ func (h *Handlers) SecureDeleteFile(w http.ResponseWriter, r *http.Request) {
 // secureDeleteFile performs secure file deletion with multiple random overwrites
 func secureDeleteFile(filePath string, passes int, logger *zap.Logger) error {
 	// Open file for reading to get size
-	file, err := os.OpenFile(filePath, os.O_RDWR, 0666)
+	// #nosec G304 -- filePath is the normalized result of normalizeUserFilePath.
+	file, err := os.OpenFile(filePath, os.O_RDWR, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}

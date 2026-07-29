@@ -2,7 +2,7 @@
 .env
 .env.*
 !.env.example
-
+.agents
 node_modules/
 frontend/node_modules/
 browser/dist/

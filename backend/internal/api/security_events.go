@@ -109,20 +109,6 @@ func StartSecurityMonitoring(db *database.Database, tc *torrent.Client, logger *
 			)
 		}
 
-		// Check encryption status
-		forceEncryption, _ := db.GetSetting("force_encryption")
-		if forceEncryption != "true" {
-			unencryptedCount := countUnencryptedPeers(tc)
-			if unencryptedCount > 0 {
-				AddSecurityEvent(
-					"unencrypted_peer",
-					"warning",
-					"Unencrypted peer connections detected",
-					"Enable force encryption to block all unencrypted peers",
-				)
-			}
-		}
-
 		// Calculate security score
 		score := calculateSecurityScore(db, tc)
 		if score < 60 {
@@ -147,12 +133,6 @@ func isVPNConnected(vpnType string) bool {
 	// Implement VPN connectivity check
 	// This is a placeholder
 	return true
-}
-
-func countUnencryptedPeers(tc *torrent.Client) int {
-	// Implement peer encryption check
-	// This is a placeholder
-	return 0
 }
 
 func calculateSecurityScore(_ *database.Database, tc *torrent.Client) int {

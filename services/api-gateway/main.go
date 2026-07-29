@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -69,28 +72,45 @@ func main() {
 
 	gateway.setupRoutes()
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8000"
-	}
-	bindAddress := os.Getenv("BIND_ADDRESS")
-	if bindAddress == "" {
-		bindAddress = "127.0.0.1"
-	}
+	port := validatedPort(os.Getenv("PORT"))
+	bindAddress := validatedBindAddress(os.Getenv("BIND_ADDRESS"))
 
 	srv := &http.Server{
-		Addr:           bindAddress + ":" + port,
-		Handler:        gateway.router,
-		ReadTimeout:    15 * time.Second,
-		WriteTimeout:   15 * time.Second,
-		IdleTimeout:    60 * time.Second,
-		MaxHeaderBytes: 1 << 20,
+		Addr:              net.JoinHostPort(bindAddress, port),
+		Handler:           gateway.router,
+		ReadTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
-	log.Printf("API Gateway starting on port %s", port)
+	log.Print("API Gateway starting")
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func validatedPort(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "8000"
+	}
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		log.Fatal("PORT must be a number between 1 and 65535")
+	}
+	return strconv.Itoa(port)
+}
+
+func validatedBindAddress(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "127.0.0.1"
+	}
+	address := strings.TrimSpace(value)
+	if net.ParseIP(address) == nil && address != "localhost" {
+		log.Fatal("BIND_ADDRESS must be an IP address or localhost")
+	}
+	return address
 }
 
 func (g *Gateway) setupRoutes() {
@@ -100,22 +120,24 @@ func (g *Gateway) setupRoutes() {
 }
 
 func (g *Gateway) healthCheck(w http.ResponseWriter, r *http.Request) {
-	json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "healthy"})
 }
 
 func (g *Gateway) handleTorrents(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "torrents endpoint"})
+	writeJSON(w, http.StatusOK, map[string]string{"message": "torrents endpoint"})
 }
 
 func (g *Gateway) handleSecurityStatus(w http.ResponseWriter, r *http.Request) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
 
 	// Try to get from cache first
 	cached, err := g.redis.Get(ctx, "security:status").Result()
 	if err == nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(cached))
+		if _, err := w.Write([]byte(cached)); err != nil {
+			log.Print("failed to write cached security status")
+		}
 		return
 	}
 
@@ -129,9 +151,19 @@ func (g *Gateway) handleSecurityStatus(w http.ResponseWriter, r *http.Request) {
 		"overallSecurityScore": 0,
 	}
 
-	data, _ := json.Marshal(status)
-	g.redis.Set(ctx, "security:status", data, 30*time.Second)
+	data, err := json.Marshal(status)
+	if err == nil {
+		if err := g.redis.Set(ctx, "security:status", data, 30*time.Second).Err(); err != nil {
+			log.Print("failed to cache security status")
+		}
+	}
+	writeJSON(w, http.StatusOK, status)
+}
 
+func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		log.Print("failed to write JSON response")
+	}
 }

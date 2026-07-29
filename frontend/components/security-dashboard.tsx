@@ -248,8 +248,8 @@ export function SecurityDashboard() {
         <CardContent className="space-y-3">
           <SecurityTip
             icon={<Shield className="h-4 w-4" />}
-            title="Enable Force Encryption"
-            description="Reject all unencrypted peer connections to maximize privacy"
+            title="Verify the live proxy status"
+            description="Confirm Tor or VPN connectivity before starting privacy-sensitive transfers"
           />
           <SecurityTip
             icon={<Globe className="h-4 w-4" />}

@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ deleted: true }, { headers: { "Cache-Control": "private, no-store" } })
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Deletion failed" }, { status: 500 })
+    console.error("Account deletion failed", error)
+    return NextResponse.json({ error: "Deletion failed" }, { status: 500 })
   }
 }

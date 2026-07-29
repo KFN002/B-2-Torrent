@@ -20,21 +20,38 @@
     "directories": {
       "output": "dist"
     },
-    "files": ["main.js", "preload.js", "renderer.js", "index.html", "styles.css"],
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "index.html",
+      "styles.css"
+    ],
     "asar": true,
     "win": {
-      "target": ["nsis", "portable", "zip"],
+      "target": [
+        "nsis",
+        "portable",
+        "zip"
+      ],
       "artifactName": "B2-VPN-Client-${version}-${arch}.${ext}",
       "requestedExecutionLevel": "requireAdministrator"
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.utilities",
       "hardenedRuntime": true,
       "artifactName": "B2-VPN-Client-${version}-${arch}.${ext}"
     },
     "linux": {
-      "target": ["AppImage", "deb", "rpm"],
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
       "category": "Network"
     }
   },
@@ -44,6 +61,10 @@
   },
   "devDependencies": {
     "electron": "^42.0.0",
-    "electron-builder": "^26.8.1"
+    "electron-builder": "^26.15.3"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.8",
+    "undici@>=7.0.0 <7.28.0": "7.28.0"
   }
 }

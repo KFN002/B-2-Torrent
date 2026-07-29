@@ -11,16 +11,16 @@ import (
 
 // DNSProtection prevents DNS leaks by routing DNS queries through proxy
 type DNSProtection struct {
-	enabled    bool
+	enabled     bool
 	proxyDialer proxy.Dialer
-	logger     *zap.Logger
+	logger      *zap.Logger
 }
 
 func NewDNSProtection(proxyDialer proxy.Dialer, logger *zap.Logger) *DNSProtection {
 	return &DNSProtection{
-		enabled:    true,
+		enabled:     true,
 		proxyDialer: proxyDialer,
-		logger:     logger,
+		logger:      logger,
 	}
 }
 
@@ -48,11 +48,11 @@ func (dp *DNSProtection) SecureResolver() *net.Resolver {
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
 			dp.logger.Debug("DNS query through proxy", zap.String("address", address))
-			
+
 			if dp.proxyDialer != nil {
 				return dp.proxyDialer.Dial(network, address)
 			}
-			
+
 			// Fallback to context-aware dial
 			d := net.Dialer{Timeout: 10 * time.Second}
 			return d.DialContext(ctx, network, address)

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package security;
 
-option go_package = "github.com/KFN002/B-2-Torrent/proto/security";
+option go_package = "github.com/KFN002/B-2-Torrent/services/proto/security";
 
 service SecurityService {
   rpc GetSecurityStatus(SecurityStatusRequest) returns (SecurityStatusResponse);

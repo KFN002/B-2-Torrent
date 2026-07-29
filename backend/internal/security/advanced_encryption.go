@@ -44,7 +44,7 @@ func (ae *AdvancedEncryption) SetForceEncryption(enabled bool) {
 // SetEncryptionLevel sets the encryption level
 func (ae *AdvancedEncryption) SetEncryptionLevel(level string) error {
 	validLevels := map[string]bool{
-		"basic":   true,
+		"basic":    true,
 		"standard": true,
 		"strong":   true,
 		"maximum":  true,
@@ -62,10 +62,10 @@ func (ae *AdvancedEncryption) SetEncryptionLevel(level string) error {
 // SetMinProtocol sets the minimum acceptable encryption protocol
 func (ae *AdvancedEncryption) SetMinProtocol(protocol string) error {
 	validProtocols := map[string]bool{
-		"RC4":        true,
-		"AES-128":    true,
-		"AES-256":    true,
-		"ChaCha20":   true,
+		"RC4":      true,
+		"AES-128":  true,
+		"AES-256":  true,
+		"ChaCha20": true,
 	}
 
 	if !validProtocols[protocol] {
@@ -163,6 +163,7 @@ func (ae *AdvancedEncryption) SecureDeleteFile(filePath string) error {
 	}
 
 	// Open file
+	// #nosec G304 -- this internal helper only accepts paths already confined by its caller.
 	file, err := os.OpenFile(filePath, os.O_WRONLY, 0)
 	if err != nil {
 		ae.logger.Error("Failed to open file for secure deletion", zap.Error(err))
@@ -180,7 +181,7 @@ func (ae *AdvancedEncryption) SecureDeleteFile(filePath string) error {
 	// Overwrite with random data (3 passes)
 	for pass := 0; pass < 3; pass++ {
 		file.Seek(0, 0)
-		
+
 		// Write random data
 		written := int64(0)
 		buf := make([]byte, 4096)
@@ -189,7 +190,7 @@ func (ae *AdvancedEncryption) SecureDeleteFile(filePath string) error {
 			if toWrite > int64(len(buf)) {
 				toWrite = int64(len(buf))
 			}
-			
+
 			io.ReadFull(rand.Reader, buf[:toWrite])
 			n, err := file.Write(buf[:toWrite])
 			if err != nil {
@@ -197,7 +198,7 @@ func (ae *AdvancedEncryption) SecureDeleteFile(filePath string) error {
 			}
 			written += int64(n)
 		}
-		
+
 		file.Sync()
 	}
 

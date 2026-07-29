@@ -5,12 +5,13 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/KFN002/B-2-Torrent/backend/pkg/cache"
 	"github.com/KFN002/B-2-Torrent/backend/pkg/database"
 	"github.com/KFN002/B-2-Torrent/backend/pkg/messaging"
-	pb "github.com/KFN002/B-2-Torrent/proto/security"
+	pb "github.com/KFN002/B-2-Torrent/services/proto/security"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -49,8 +50,13 @@ func (s *server) CheckLeaks(ctx context.Context, req *pb.LeakCheckRequest) (*pb.
 }
 
 func main() {
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
+	logger, err := zap.NewProduction()
+	if err != nil {
+		panic("failed to initialize logger")
+	}
+	defer func() {
+		_ = logger.Sync()
+	}()
 
 	logger.Info("Starting Security Microservice")
 
@@ -94,12 +100,16 @@ func main() {
 	reflection.Register(grpcServer)
 
 	// Start server
-	port := os.Getenv("GRPC_PORT")
-	if port == "" {
-		port = "50053"
+	port := 50053
+	if value := os.Getenv("GRPC_PORT"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > 65535 {
+			logger.Fatal("GRPC_PORT must be a number between 1 and 65535")
+		}
+		port = parsed
 	}
 
-	lis, err := net.Listen("tcp", ":"+port)
+	lis, err := net.Listen("tcp", net.JoinHostPort("", strconv.Itoa(port)))
 	if err != nil {
 		logger.Fatal("Failed to listen", zap.Error(err))
 	}
@@ -114,7 +124,7 @@ func main() {
 		grpcServer.GracefulStop()
 	}()
 
-	logger.Info("Security service listening", zap.String("port", port))
+	logger.Info("Security service listening", zap.Int("port", port))
 	if err := grpcServer.Serve(lis); err != nil {
 		logger.Fatal("Failed to serve", zap.Error(err))
 	}

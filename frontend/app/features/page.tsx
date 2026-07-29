@@ -51,7 +51,7 @@ export default function FeaturesPage() {
       items: [
         {
           title: "AES-256-GCM Encryption",
-          desc: "Military-grade file encryption with perfect forward secrecy",
+          desc: "Authenticated file encryption with password-based key derivation",
           icon: Lock,
           href: "/tools/encryption",
         },
@@ -101,7 +101,7 @@ export default function FeaturesPage() {
           icon: Clock,
           href: "/tools/bandwidth-scheduler",
         },
-        { title: "Force Encryption", desc: "Reject all unencrypted peer connections", icon: Lock, href: "/torrents" },
+        { title: "Proxy-Aware Privacy", desc: "Report live Tor proxy availability", icon: Lock, href: "/torrents" },
         {
           title: "Magnet Link Parser",
           desc: "Analyze and extract torrent metadata",

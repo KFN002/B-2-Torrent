@@ -281,11 +281,11 @@ export default function TorrentsPage() {
                 </div>
                 <div className="space-y-2 flex-1">
                   <p className="text-base xl:text-lg 2xl:text-xl font-bold text-foreground">
-                    Multi-layer security protection enabled
+                    Live privacy status
                   </p>
                   <p className="text-sm xl:text-base 2xl:text-lg text-muted-foreground leading-relaxed">
-                    Your connection is protected with kill switch, DNS leak protection, IP obfuscation, traffic
-                    obfuscation, and AES-256 encryption with perfect forward secrecy.
+                    Review the security dashboard to confirm which proxy, DNS, obfuscation, and sharing protections
+                    are active before starting a transfer.
                   </p>
                   <Link href="/security">
                     <Button

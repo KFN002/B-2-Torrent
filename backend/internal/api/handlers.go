@@ -425,6 +425,8 @@ func removeDirectoryContents(root string) error {
 		return err
 	}
 	for _, entry := range entries {
+		// #nosec G703 -- cleanRoot is an absolute non-root application directory
+		// and os.ReadDir entry names cannot contain path separators.
 		if err := os.RemoveAll(filepath.Join(cleanRoot, entry.Name())); err != nil {
 			return err
 		}

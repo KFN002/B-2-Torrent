@@ -73,39 +73,27 @@ All HTTP responses include:
 
 #### Supported Algorithms
 - **AES-256-GCM** (Recommended) - NIST approved, authenticated encryption
-- **AES-256-CBC** - Standard AES with CBC mode
-- **AES-192-GCM** - Balanced security and performance
 - **ChaCha20-Poly1305** - Modern cipher, excellent on mobile
-- **Twofish-256** - Alternative to AES
-- **Serpent-256** - Maximum security cipher
-- **Camellia-256** - International standard
 
 #### Key Derivation Functions
 - **Argon2id** (Recommended) - Winner of Password Hashing Competition, GPU/ASIC resistant
-- **PBKDF2** - 100,000+ iterations with SHA-256/SHA-512
+- **PBKDF2** - 600,000 iterations by default with SHA-256/SHA-512
 - **scrypt** - Memory-hard function
-- **bcrypt** - Battle-tested key derivation
 
 #### Hash Algorithms
 - **SHA-256** - Standard cryptographic hash
 - **SHA-512** - Extended security
-- **SHA-3-256** - Latest NIST standard
-- **BLAKE2b** - Fast and secure
-- **Whirlpool** - 512-bit hash
 
 #### Security Features
 - **Authenticated Encryption** - AEAD modes prevent tampering
-- **Perfect Forward Secrecy** - Unique keys per session
 - **Random Salt & IV** - Unique per encryption operation
 - **Secure Key Storage** - Keys never stored, derived from password
-- **Automatic Secure Deletion** - Original files wiped after encryption
+- **Authenticated Metadata** - Algorithm and KDF parameters are protected against tampering
 
-### Torrent Encryption
-- **Force Encryption**: Reject all unencrypted peers
-- **Protocol Encryption**: RC4 obfuscation minimum
-- **Message Stream Encryption**: Full end-to-end encryption
-- **Header Encryption**: Prevent protocol detection
-- **Peer Exchange Disabled**: No PEX for anonymity
+### Torrent Transport
+The current backend does not enforce torrent peer transport encryption. The API
+reports that limitation explicitly. Use a verified Tor/VPN proxy for network
+privacy and authenticated file encryption for data at rest.
 
 ## Data Protection
 
@@ -211,7 +199,6 @@ The application monitors the controls it can observe locally:
    - Tor Network: ON
    - Kill Switch: ON
    - DNS Leak Protection: ON
-   - Force Encryption: ON
    - Peer Verification: ON
    - Anti-Fingerprinting: ON
    - MAC Randomization: ON
@@ -342,8 +329,8 @@ B-2-Torrent improves privacy posture, but understand:
 
 2. **Exit Node Monitoring**
    - Tor exit nodes could monitor unencrypted traffic
-   - Always use encrypted torrents
-   - Force encryption in settings
+   - Do not assume torrent peer traffic is end-to-end encrypted
+   - Verify the live Tor/VPN proxy status before sensitive transfers
 
 3. **Timing Attacks**
    - Sophisticated timing correlation attacks theoretically possible

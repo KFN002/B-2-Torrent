@@ -53,8 +53,13 @@ func initLogger() *zap.Logger {
 
 func getUserDownloadDir() string {
 	if configured := os.Getenv("DOWNLOAD_DIR"); configured != "" {
-		if err := os.MkdirAll(configured, 0700); err == nil {
-			return configured
+		cleaned, err := filepath.Abs(configured)
+		if err == nil && cleaned != string(filepath.Separator) {
+			// #nosec G703 -- DOWNLOAD_DIR is an operator-controlled setting, normalized
+			// to an absolute non-root path before use.
+			if err := os.MkdirAll(cleaned, 0700); err == nil {
+				return cleaned
+			}
 		}
 	}
 
@@ -104,16 +109,19 @@ func main() {
 		}
 	}
 
-	os.Setenv("TEMP_DIR", tempDir)
-	os.Setenv("UPLOAD_DIR", uploadDir)
-	os.Setenv("DOWNLOAD_DIR", downloadDir)
+	for key, value := range map[string]string{
+		"TEMP_DIR":     tempDir,
+		"UPLOAD_DIR":   uploadDir,
+		"DOWNLOAD_DIR": downloadDir,
+	} {
+		if err := os.Setenv(key, value); err != nil {
+			logger.Fatal("failed to configure app directory", zap.String("key", key), zap.Error(err))
+		}
+	}
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		if os.Getenv("NODE_ENV") == "production" {
-			logger.Fatal("DATABASE_URL is required in production")
-		}
-		dbURL = "postgres://torrentuser:torrentpass@localhost:5432/torrentdb?sslmode=disable"
+		logger.Fatal("DATABASE_URL is required")
 	}
 
 	var db *database.Database

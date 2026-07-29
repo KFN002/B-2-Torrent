@@ -97,8 +97,8 @@ const defaultSecurityStatus: SecurityStatusDetails = {
   sharingDisabled: true,
   trafficObfuscationActive: false,
   dataEncryptionActive: true,
-  forceEncryptionActive: true,
-  rejectPlaintextActive: true,
+  forceEncryptionActive: false,
+  rejectPlaintextActive: false,
   noLogsMode: false,
   macRandomizationActive: false,
   antiFingerprintActive: false,
@@ -162,7 +162,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     completedPath: "/app/downloads/completed",
     autoStopSeeding: false,
     autoDeleteOnTermination: false,
-    enforceEncryption: true,
+    enforceEncryption: false,
     blockUnencryptedPeers: false,
     enablePeerVerification: true,
     maxPeerBandwidth: "",
@@ -186,10 +186,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     outlineKey: "",
     noLogsMode: false,
     obfuscateTraffic: false,
-    forceEncryption: true,
-    encryptionLevel: "strong",
-    minEncryptionProtocol: "AES-256",
-    rejectPlaintext: true,
+    forceEncryption: false,
+    encryptionLevel: "not-enforced",
+    minEncryptionProtocol: "not-enforced",
+    rejectPlaintext: false,
     macRandomization: false,
     antiFingerprint: false,
     secureDelete: true,
@@ -230,30 +230,30 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           diskCacheSize: data.disk_cache_size || "",
           enableTor: data.enable_tor || "true",
           downloadPath: data.download_path || "/app/downloads",
-          enableDHT: data.enable_dht || true,
-          enablePEX: data.enable_pex || true,
-          enableUPnP: data.enable_upnp || true,
+          enableDHT: data.enable_dht ?? true,
+          enablePEX: data.enable_pex ?? true,
+          enableUPnP: data.enable_upnp ?? true,
           encryption: data.encryption || "preferred",
           minReconnectTime: data.min_reconnect_time || "30",
           maxFailCount: data.max_fail_count || "3",
-          preferEncryptedPeers: data.prefer_encrypted_peers || true,
-          enablePeerBlocklist: data.enable_peer_blocklist || true,
+          preferEncryptedPeers: data.prefer_encrypted_peers ?? true,
+          enablePeerBlocklist: data.enable_peer_blocklist ?? true,
           trackerUpdateInterval: data.tracker_update_interval || "30",
           scrapeInterval: data.scrape_interval || "60",
-          useTrackerProxies: data.use_tracker_proxies || true,
-          preAllocateDiskSpace: data.pre_allocate_disk_space || false,
-          autoMoveCompleted: data.auto_move_completed || false,
+          useTrackerProxies: data.use_tracker_proxies ?? true,
+          preAllocateDiskSpace: data.pre_allocate_disk_space ?? false,
+          autoMoveCompleted: data.auto_move_completed ?? false,
           completedPath: data.completed_path || "/app/downloads/completed",
-          autoStopSeeding: data.auto_stop_seeding || false,
-          autoDeleteOnTermination: data.auto_delete_on_termination || false,
-          enforceEncryption: data.enforce_encryption || true,
-          blockUnencryptedPeers: data.block_unencrypted_peers || false,
-          enablePeerVerification: data.enable_peer_verification || true,
+          autoStopSeeding: data.auto_stop_seeding ?? false,
+          autoDeleteOnTermination: data.auto_delete_on_termination ?? false,
+          enforceEncryption: data.enforce_encryption ?? false,
+          blockUnencryptedPeers: data.block_unencrypted_peers ?? false,
+          enablePeerVerification: data.enable_peer_verification ?? true,
           maxPeerBandwidth: data.max_peer_bandwidth || "",
-          enableWebSeeds: data.enable_web_seeds || false,
-          randomizePort: data.randomize_port || true,
+          enableWebSeeds: data.enable_web_seeds ?? false,
+          randomizePort: data.randomize_port ?? true,
           bindToInterface: data.bind_to_interface || "",
-          enableLocalPeerDiscovery: data.enable_local_peer_discovery || false,
+          enableLocalPeerDiscovery: data.enable_local_peer_discovery ?? false,
         })
       }
     } catch (error) {
@@ -269,14 +269,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         setSecuritySettings({
           ...data, // Ensure existing properties are preserved
           // Explicitly set new properties with default values if not in API response
-          forceEncryption: data.forceEncryption ?? true,
+          forceEncryption: false,
           dnsObfuscationEnabled: data.dnsObfuscationEnabled ?? false,
           ipObfuscationEnabled: data.ipObfuscationEnabled ?? true,
           dhtInvisibility: data.dhtInvisibility ?? true,
           sharingDisabled: data.sharingDisabled ?? true,
-          encryptionLevel: data.encryptionLevel ?? "strong",
-          minEncryptionProtocol: data.minEncryptionProtocol ?? "AES-256",
-          rejectPlaintext: data.rejectPlaintext ?? true,
+          encryptionLevel: "not-enforced",
+          minEncryptionProtocol: "not-enforced",
+          rejectPlaintext: false,
           macRandomization: data.macRandomization ?? false,
           antiFingerprint: data.antiFingerprint ?? false,
           secureDelete: data.secureDelete ?? true,
@@ -593,12 +593,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       label: "Disable Sharing",
       active: securityStatus.sharingDisabled,
       icon: Upload,
-    },
-    {
-      key: "forceEncryption",
-      label: "Force Encryption",
-      active: securityStatus.forceEncryptionActive,
-      icon: Lock,
     },
     {
       key: "noLogsMode",
@@ -1356,81 +1350,32 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 </CardContent>
               </Card>
 
-              {/* Added Advanced Encryption Controls section */}
+              {/* Torrent transport encryption is not exposed by the current backend. */}
               <Card className="border-destructive/20 bg-destructive/5">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3 mb-4">
                     <Lock className="h-5 w-5 text-destructive" />
                     <div>
-                      <p className="text-sm font-semibold">Advanced Encryption Controls</p>
-                      <p className="text-xs text-muted-foreground">Force encryption on all connections</p>
+                      <p className="text-sm font-semibold">Transport Encryption</p>
+                      <p className="text-xs text-muted-foreground">
+                        Torrent peer-encryption enforcement is not available in this backend.
+                      </p>
                     </div>
                   </div>
 
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between py-3 px-4 border border-border rounded-lg hover:border-primary/50 transition-all hover:shadow-sm bg-card">
+                    <div className="flex items-start gap-3 py-3 px-4 border border-border rounded-lg bg-card">
                       <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-full bg-destructive/10 animate-pulse">
+                        <div className="p-2 rounded-full bg-destructive/10">
                           <ShieldAlert className="h-4 w-4 text-destructive" />
                         </div>
                         <div className="space-y-0.5">
-                          <Label className="text-sm font-medium">Force Encryption</Label>
-                          <p className="text-xs text-muted-foreground">Reject all unencrypted peer connections</p>
+                          <p className="text-sm font-medium">No enforcement is claimed</p>
+                          <p className="text-xs text-muted-foreground">
+                            Use Tor or a VPN for network privacy and the file-encryption tool for data at rest.
+                          </p>
                         </div>
                       </div>
-                      <Switch
-                        checked={securitySettings.forceEncryption}
-                        onCheckedChange={(checked) =>
-                          setSecuritySettings({ ...securitySettings, forceEncryption: checked })
-                        }
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Encryption Level</Label>
-                      <select
-                        className="w-full px-3 py-2 rounded-md border border-input bg-background transition-all hover:border-primary focus:border-primary focus:ring-2 focus:ring-primary/20"
-                        value={securitySettings.encryptionLevel}
-                        onChange={(e) => setSecuritySettings({ ...securitySettings, encryptionLevel: e.target.value })}
-                      >
-                        <option value="basic">Basic (RC4 - Fast)</option>
-                        <option value="standard">Standard (AES-128)</option>
-                        <option value="strong">Strong (AES-256 - Recommended)</option>
-                        <option value="maximum">Maximum (AES-256-GCM + Perfect Forward Secrecy)</option>
-                      </select>
-                      <p className="text-xs text-muted-foreground">
-                        Higher levels provide better security but may reduce speed
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Minimum Protocol</Label>
-                      <select
-                        className="w-full px-3 py-2 rounded-md border border-input bg-background transition-all hover:border-primary focus:border-primary focus:ring-2 focus:ring-primary/20"
-                        value={securitySettings.minEncryptionProtocol}
-                        onChange={(e) =>
-                          setSecuritySettings({ ...securitySettings, minEncryptionProtocol: e.target.value })
-                        }
-                      >
-                        <option value="RC4">RC4 (Legacy)</option>
-                        <option value="AES-128">AES-128 (Standard)</option>
-                        <option value="AES-256">AES-256 (Strong)</option>
-                        <option value="ChaCha20">ChaCha20-Poly1305 (Modern)</option>
-                      </select>
-                      <p className="text-xs text-muted-foreground">Reject peers using weaker encryption protocols</p>
-                    </div>
-
-                    <div className="flex items-center justify-between py-3 px-4 border border-border rounded-lg hover:border-primary/50 transition-all hover:shadow-sm bg-card">
-                      <div className="space-y-0.5">
-                        <Label className="text-sm font-medium">Reject Plaintext</Label>
-                        <p className="text-xs text-muted-foreground">Block all non-encrypted data transmission</p>
-                      </div>
-                      <Switch
-                        checked={securitySettings.rejectPlaintext}
-                        onCheckedChange={(checked) =>
-                          setSecuritySettings({ ...securitySettings, rejectPlaintext: checked })
-                        }
-                      />
                     </div>
 
                     <div className="flex items-center justify-between py-3 px-4 border border-border rounded-lg hover:border-primary/50 transition-all hover:shadow-sm bg-card">
